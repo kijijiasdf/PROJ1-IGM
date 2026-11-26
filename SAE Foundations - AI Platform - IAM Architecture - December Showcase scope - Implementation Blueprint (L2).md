@@ -11,7 +11,7 @@
 | **Solution Architect** | @Aninda Bhunia |
 | **Service Owner** |  |
 | **Discovery Blueprint** | n/a |
-| **Low Level Design** | to be linked |
+| **Low Level Design** | [IAM Detailed Design (LLD) v0.2](https://igm.atlassian.net/wiki/x/dYMylw) |
 
 # Introduction
 
@@ -19,17 +19,28 @@ IGM has narrowed its December 2026 target to one use case. **basic-agent V1** is
 
 This blueprint sets out the identity and access design for that agent: identity, authentication, authorization, registration, credentials, privileged access, evidence and containment. The IAM Control Reference Architecture v1.2 remains the target state; every requirement here traces to a v1.2 control, and every divergence is recorded as a known gap.
 
-| **Version** | v1.1, 11 November 2026. Adds engineering attention points EA-01 to EA-27; requirements unchanged from v1.0 (14 October 2026). |
+| **Version** | v1.2, 26 November 2026. Incorporates the engineering review by EIAM and AI Platform (see Changes in v1.2). v1.1 (11 November 2026) added engineering attention points EA-01 to EA-27; v1.0 issued 14 October 2026. |
 | --- | --- |
-| **Status** | Draft for AI Platform team and EIAM review, then the V1 readiness review. |
+| **Status** | Draft for AI Platform team and EIAM review, then the V1 readiness review. v1.2 incorporates the EIAM and AI Platform review of 25–26 November. |
 | **Scope** | basic-agent V1 in Dev only (sub-01-nprd-01 · rg-aif-dev-cac-01 · proj-iso-dev-cac-01). Tier 1, Read and Draft, synthetic data, internal Entra users. |
 | **Normative language** | MUST blocks the V1 readiness review if unmet. SHOULD requires a recorded exception with an owner and a date. |
+
+Engineering review by EIAM and AI Platform (review threads on this page and on the IAM Detailed Design page). Requirement IDs are unchanged.
+
+- **User entitlements (Q-04 closed):** gateway API app roles Agent.Use, FAQ.AllStaff and FAQ.PlatformTeam replace group claims. The context carries FAQ roles; the MCP maps role to container (DEC-IAM-06, 08, 24).
+- **Members only:** APIM requires acct = 0; guest negative test added (DEC-IAM-06, A-03).
+- **Tool gateway (Q-03 closed):** Tools.Invoke app role, assigned once by a PIM-activated EIAM administrator.
+- **Entra object ownership:** EIAM creates and administers all Entra objects through PIM; Terraform manages Azure resources only, with no Graph write permission.
+- **Credentials:** precise rule (no password or key credentials, federated credentials match the approved list); the test client is a public SPA (DEC-IAM-15).
+- **Corrected wording:** federated credential subject pinned to the environment (DEC-IAM-16); retention per the Sentinel LLD v8.0 standard (DEC-IAM-29, A-10); stronger proofs for DEC-IAM-02, 04, 27; PIM role split (DEC-IAM-25); EIAM code owner on manifest authorization fields (DEC-IAM-26).
+- **Containment:** kill role limited to the two kill-switch values (proof or runbook), time-to-deny measured from the accepted command; identity-level exercise included.
+- **Other:** licensing summary (A-05); December tests interactive with no CA exclusions (A-11); Q-01 proposed position (pinned key); OBO spike in Dev for V1.1.
 
 ### Position
 
 In the V1 design, the agent has its own Entra identity and an Agent 365 record with a named sponsor, and APIM refuses any agent that lacks either. The user's token is validated at APIM and goes no further. From there the user's authority travels as a context that APIM signs, while the agent's authority travels in tokens issued to the agent identity. The tool gateway accepts a call only when both are present and refer to the same request.
 
-Authorization is static. Grants come from the manifest, the user's entitlements come from the groups in their token, and nothing is evaluated per call. For a Tier 1 agent that can only read synthetic FAQ files, that is proportionate. It would not be for an agent that writes or reads client data, and ten known gaps are recorded on that basis, each naming the change in workload that would make it unacceptable.
+Authorization is static. Grants come from the manifest, the user's entitlements come from the app roles in their token, and nothing is evaluated per call. For a Tier 1 agent that can only read synthetic FAQ files, that is proportionate. It would not be for an agent that writes or reads client data, and ten known gaps are recorded on that basis, each naming the change in workload that would make it unacceptable.
 
 ### What the December build delivers
 
@@ -45,7 +56,7 @@ Authorization is static. Grants come from the manifest, the user's entitlements 
 - **No runtime decision point (KG-02).** Grants are fixed in the manifest and no decision record is written. Needed before Tier 2 or real data.
 - **Signed context instead of OBO on the tool path (KG-01).** The agent holds something that asserts a user's authority, so it must be short-lived and bound to the call. OBO should be reconsidered for V1.1.
 - **The Knowledge MCP reads Storage under its own identity (KG-03),** so which files a user sees is decided in MCP code. Permission-aware retrieval belongs to the V1.1 grounding design with the Data team.
-- **SailPoint, access packages and certification are out of V1 (KG-05, KG-06).** Agent grants are approved as pull requests; user entitlements are the groups their token carries.
+- **SailPoint, access packages and certification are out of V1 (KG-05, KG-06).** Agent grants are approved as pull requests; user entitlements are the app roles their token carries.
 
 ### Needed before build
 
@@ -103,7 +114,7 @@ There is no Discovery Blueprint for this initiative, so this section records the
 
 - **Scope narrowed (October 2026).** IGM reduced the December target to one use case, basic-agent V1 in Dev. The IAM Control Reference Architecture v1.2 and capability model v0.2 remain the target; this blueprint is a December edition cut down to that agent.
 - **Requirements re-baselined.** 32 December requirements (DEC-IAM-01 to 32) replace the v1.2 controls for this build. Each traces to a v1.2 control; divergences are recorded as known gaps.
-- **Proposed items not in the IGM use-case deck.** Delegated-context TTL of 5 minutes or less and its bindings; 90-day signing-key rotation; an app role on the tool gateway API granted to the agent identity (Tools.Invoke); group claims limited to groups assigned to the application, failing closed on overage; OIDC federation for the seed job and Terraform identities. These need confirmation by the AI Platform team and EIAM.
+- **Proposed items not in the IGM use-case deck.** Delegated-context TTL of 5 minutes or less and its bindings; 90-day signing-key rotation; an app role on the tool gateway API granted to the agent identity (Tools.Invoke); app roles on the gateway API assigned to the user groups instead of group claims (Q-04, closed 26 November); OIDC federation for the seed job and Terraform identities. These need confirmation by the AI Platform team and EIAM. Responsibility (v1.2): the context TTL and bindings and the key rotation are implemented by AI Platform, with EIAM consulted and Security Architecture approving; the app roles, Tools.Invoke and pipeline federation are approved and implemented by EIAM, with AI Platform supplying inputs.
 
 ### Requirements summary
 
@@ -128,37 +139,37 @@ Each requirement is paired with the proof the Dev build must produce. The Decemb
 | **ID** | **Level** | **Requirement** | **Enforced at** | **Proof in V1** | **v1.2 control** |
 | --- | --- | --- | --- | --- | --- |
 | **DEC-IAM-01** | MUST | basic-agent runs under its own Entra agent identity, created at version create. It shares no identity with the project managed identity or any other agent. | Foundry · Entra Agent ID | Agent identity object ID in Foundry traces differs from the project identity; Entra shows the identity linked to its blueprint | IAM-01 |
-| **DEC-IAM-02** | MUST | An Agent 365 record with a named human sponsor and technical owner exists before publish, and publish requires approval. | Agent 365 | Publish without a record or sponsor is refused; record export retained as evidence | IAM-02, IAM-35 |
+| **DEC-IAM-02** | MUST | An Agent 365 record with a named human sponsor and technical owner exists before publish, and publish requires approval. The Agent 365 record is the system of record for ownership; sponsor and owner validity is checked at the readiness review. | Agent 365 | Publish without a record or sponsor is refused; record export retained as evidence | IAM-02, IAM-35 |
 | **DEC-IAM-03** | MUST | Unregistered means unreachable. APIM routes and tool grants are compiled only from the merged manifest joined to the Agent 365 record. Routes are never hand-edited, and drift is zero. | Manifest → Terraform → APIM | An unregistered caller or agent gets 403 with a reason record; the drift check returns zero | IAM-35 |
-| **DEC-IAM-04** | MUST | Every principal on the V1 path (P-01 to P-13) is recorded in the identity inventory with owner, purpose, environment and authentication method before go-live. | Architecture record | Inventory reviewed and signed at the V1 readiness review | IAM-34 |
+| **DEC-IAM-04** | MUST | Every principal on the V1 path (P-01 to P-13) is recorded in the identity inventory with owner, purpose, environment and authentication method before go-live. The inventory also lists the agent identity blueprint and its principal, the Tools.Invoke assigner, the kill-switch operator group, the PIM approver group and the test user accounts. | Architecture record | Inventory reviewed and signed at the V1 readiness review | IAM-34 |
 | **DEC-IAM-05** | MUST | The manifest row records tier ceiling Tier 1 and action classes Read and Draft. The merge gate rejects any Write grant, a second agent, a non-Responses protocol or a second model. | GitHub rulesets · merge gate | A test PR adding a Write grant is rejected at merge | IAM-03 (partial) |
-| **DEC-IAM-06** | MUST | Users authenticate with Entra SSO, MFA and Conditional Access. Only members of the internal-user group can obtain a token for the gateway API (assignment required on its enterprise application). | Entra ID | A non-member cannot obtain a token; Conditional Access result visible in the sign-in log | IAM-33 |
-| **DEC-IAM-07** | MUST | APIM northbound validates the user token's signature, issuer, tenant, audience (gateway API), scope and expiry, and checks that the calling application is on the allowlist. Anything missing or invalid gets 401. | APIM northbound | Wrong audience, wrong tenant, expired token and non-allowlisted caller each return 401 with a reason record | IAM-16 |
-| **DEC-IAM-08** | MUST | The gateway API emits only groups assigned to the application, which avoids group-claim overage. APIM fails closed when the groups claim is absent or an overage indicator is present. | Entra app registration · APIM | A test user in more than 200 groups still receives the FAQ group claims, or is refused, never silently over-granted | n/a |
+| **DEC-IAM-06** | MUST | Users authenticate with Entra SSO, MFA and Conditional Access. Only internal members of the internal-user group can use the gateway API: assignment is required on its enterprise application, and APIM northbound refuses any token that lacks the Agent.Use app role (assigned to the internal-user group) or whose acct claim is not 0 (member). | Entra ID | A non-member cannot obtain a token; a guest in an assigned group is refused with 403 not-member; Conditional Access result visible in the sign-in log | IAM-33 |
+| **DEC-IAM-07** | MUST | APIM northbound validates the user token's signature, issuer, tenant, audience (the gateway API's client ID in v2 tokens), scope and expiry, and checks that the calling application is on the allowlist. Anything missing or invalid gets 401. | APIM northbound | Wrong audience, wrong tenant, expired token and non-allowlisted caller each return 401 with a reason record | IAM-16 |
+| **DEC-IAM-08** | MUST | The gateway API emits app roles, not group claims: Agent.Use, FAQ.AllStaff and FAQ.PlatformTeam (names to confirm), each assigned to its Entra group, so no overage can occur. APIM fails closed when the roles claim lacks Agent.Use; the signed context carries only the FAQ roles. | Entra app registration · APIM | Role tests: a user with Agent.Use only sees no FAQ content; a user in one FAQ group sees only that container; an unassigned user gets no token | n/a |
 | **DEC-IAM-09** | MUST | The user token terminates at APIM and is never forwarded to the agent, the model, the tool gateway or the Knowledge MCP. | APIM northbound | No user bearer token in the headers or traces at Foundry, the tool gateway or the MCP | IAM-40 |
-| **DEC-IAM-10** | MUST | APIM builds the delegated context only from validated token claims (OID, tenant, groups, purpose, tier). Caller-supplied x-client and identity headers are stripped on entry. | APIM northbound | A spoofed x-client header from the caller is dropped and does not reach the agent | IAM-40 |
+| **DEC-IAM-10** | MUST | APIM builds the delegated context only from validated token claims (OID, tenant, FAQ roles, purpose, tier). Caller-supplied x-client and identity headers are stripped on entry. | APIM northbound | A spoofed x-client header from the caller is dropped and does not reach the agent | IAM-40 |
 | **DEC-IAM-11** | MUST | The context is signed with the Key Vault key hca-delegated-context-sign. The key is non-exportable and only the APIM managed identity holds sign permission. The context carries issued-at, expiry (TTL of 5 minutes or less, proposed), audience = tool gateway, correlation\_id and the target agent identity. | Key Vault · APIM | Expired, foreign-audience or tampered context gets 401 at the tool gateway; Key Vault access policy shows APIM MI sign-only | IAM-41, IAM-42 |
 | **DEC-IAM-12** | MUST | The tool gateway verifies the context signature and binds it to the call: the context's agent must equal the agent token's identity, and its correlation\_id must equal the request's. A context reused outside its call gets 401. | APIM tool gateway | A context replayed with a different correlation\_id or a different agent token is refused | IAM-41, IAM-42 |
 | **DEC-IAM-13** | SHOULD | The signing key rotates on a defined period (90 days proposed), with dual-key verification during rollover and a documented emergency rotation. | Key Vault · APIM | Rotation runbook executed once in Dev without failed calls | IAM-25 |
 | **DEC-IAM-14** | MUST | The agent authenticates to the model and to the tool gateway with agent identity tokens only. It uses no API keys and holds no secrets in code or configuration, and local auth is disabled on the Foundry account. | Foundry · Azure Policy · agent code | Policy shows local auth off; secret scan on the template repo is clean; key-based call refused | IAM-04, IAM-30 |
-| **DEC-IAM-15** | MUST | All service-to-service calls (APIM to Foundry, MCP to Storage, seed job to Storage) use managed or federated identities. No client secret exists on the path. | Entra · Azure resources | Credential inventory of app registrations shows no secrets | IAM-04, IAM-24 |
-| **DEC-IAM-16** | MUST | sp-hca-release authenticates only through a GitHub OIDC federated credential bound to the protected environment and branch. It cannot create model deployments, change APIM policy or assign roles. | Entra federation · Azure RBAC | Model deployment creation by the release identity is denied; federated credential subject pinned | IAM-28, IAM-39 |
-| **DEC-IAM-17** | MUST | Checkpoint A: APIM northbound admits only internal-user group members calling from allowlisted applications to registered agents. Everything else gets 401 or 403 with a reason record. | APIM northbound | Non-member, non-allowlisted app and unregistered agent each refused with a reason record | IAM-35 |
+| **DEC-IAM-15** | MUST | All service-to-service calls (APIM to Foundry, MCP to Storage, seed job to Storage) use managed or federated identities. No client secret exists on the path. Every V1 app registration has passwordCredentials = 0 and keyCredentials = 0, and its federated credentials match the approved subject list; the test client is a public client (SPA) with no credential. | Entra · Azure resources | Every V1 app registration shows passwordCredentials = 0 and keyCredentials = 0, and federated credentials match the approved subject list; the test client is a public client (SPA) | IAM-04, IAM-24 |
+| **DEC-IAM-16** | MUST | sp-hca-release authenticates only through a GitHub OIDC federated credential pinned to the protected environment (exact subject, no wildcard), with the branch enforced by the environment's deployment-branch rule. It cannot create model deployments, change APIM policy or assign roles. | Entra federation · Azure RBAC | Model deployment creation by the release identity is denied; federated credential subject equals repo:\<org\>/\<repo\>:environment:\<name\> and the environment's branch rule is in place | IAM-28, IAM-39 |
+| **DEC-IAM-17** | MUST | Checkpoint A: APIM northbound admits only internal members holding the Agent.Use role calling from allowlisted applications to registered agents. Everything else gets 401 or 403 with a reason record. | APIM northbound | Non-member, non-allowlisted app and unregistered agent each refused with a reason record | IAM-35 |
 | **DEC-IAM-18** | MUST | The identity that invokes the agent (APIM MI) holds the invoke right at the narrowest scope Foundry supports for basic-agent. The project endpoint accepts traffic only from snet-apim and snet-runners, with public network access off. | Foundry RBAC · NSG · private endpoint | Direct call from the internet and from a non-platform VNet refused; role assignment scope reviewed | IAM-38 |
 | **DEC-IAM-19** | MUST | The agent identity holds only the role needed to call the pinned deployment. Azure Policy denies any deployment outside the allow-list (name, version, SKU, DataZone-Canada), and the project managed identity holds no roles. | Foundry RBAC · Azure Policy | Unlisted or Global deployment denied; role assignment export shows no roles on the project identity | IAM-38 |
 | **DEC-IAM-20** | MUST | Checkpoint C: the tool gateway requires both lanes, an agent token with audience = tool gateway API carrying the app role granted to basic-agent (proposed: Tools.Invoke) AND a valid signed context. Either missing gets 401. | APIM tool gateway | Missing lane returns 401; token from another agent identity returns 401 | IAM-06, IAM-16 |
 | **DEC-IAM-21** | MUST | Only the manifest grants list\_faq\_topics and get\_faq, action class Read, are callable. Any other tool or action gets 403 with a reason record, and results are size-capped and screened for injection before they return to the agent. | APIM tool gateway | Ungranted tool name and a Write-class call each return 403; seeded injection string produces a verdict record | IAM-15 |
-| **DEC-IAM-22** | MUST | Checkpoint D: the Knowledge MCP maps context groups to containers deterministically and accepts a topic id, never a path. It fails closed (no content) when the context is absent, invalid or maps to no container. | Knowledge MCP | Two users in different groups see different topic lists; a user with no FAQ group sees nothing | IAM-08 (partial) |
+| **DEC-IAM-22** | MUST | Checkpoint D: the Knowledge MCP maps the context's FAQ roles to containers deterministically and accepts a topic id, never a path. It fails closed (no content) when the context is absent, invalid or maps to no container. | Knowledge MCP | Two users with different FAQ roles see different topic lists; a user with no FAQ role sees nothing | IAM-08 (partial) |
 | **DEC-IAM-23** | MUST | The Knowledge MCP managed identity holds Storage Blob Data Reader scoped to the two FAQ containers, not the account. The Storage private endpoint accepts snet-mcp only, and the seed job identity is the only writer. | Azure RBAC · Storage · NSG | Role assignment scope is container-level; write by the MCP identity denied | IAM-38 |
-| **DEC-IAM-24** | MUST | Effective authority in V1 = manifest grant ∩ the user's mapped groups ∩ tier ceiling. No path may return content from a container that the user's groups do not map to, and no deny may be overridden by an allow. | Design rule (APIM + MCP) | Negative tests in DEC-IAM-20 to 23 all pass | IAM-08 (partial) |
-| **DEC-IAM-25** | MUST | Human administrative access to the Foundry account and project, APIM, Key Vault, Agent 365, the app registrations and Storage is through PIM: eligible only, just-in-time and time-bound, with approval for Key Vault and APIM policy roles. Nobody holds a standing Owner role. | Entra PIM | Role assignment export shows no permanent privileged assignments for humans | IAM-46 |
-| **DEC-IAM-26** | MUST | Manifest, Terraform and APIM policy changes go through pull request, with a reviewer distinct from the author enforced by GitHub rulesets. | GitHub rulesets | Self-approval of a manifest PR is blocked | IAM-28 |
-| **DEC-IAM-27** | MUST | Humans never authenticate as workload identities, and workload identities have no interactive sign-in path. | Entra | Sign-in logs show no interactive sign-ins for P-04 to P-11 | IAM-34 |
+| **DEC-IAM-24** | MUST | Effective authority in V1 = manifest grant ∩ the user's FAQ roles ∩ tier ceiling. No path may return content from a container that the user's groups do not map to, and no deny may be overridden by an allow. | Design rule (APIM + MCP) | Negative tests in DEC-IAM-20 to 23 all pass | IAM-08 (partial) |
+| **DEC-IAM-25** | MUST | Human administrative access to the Foundry account and project, APIM, Key Vault, Agent 365, the app registrations and Storage is through PIM: eligible only, just-in-time and time-bound, with approval for Key Vault and APIM policy roles. Nobody holds a standing Owner role. Entra directory roles (application and agent-identity administration) and Azure RBAC roles (Foundry, APIM, Key Vault, Storage, kill switch) are listed separately in LLD §9.4; PIM for Groups is acceptable for the Azure roles if the approval requirement is kept. | Entra PIM | Role assignment export shows no permanent privileged assignments for humans | IAM-46 |
+| **DEC-IAM-26** | MUST | Manifest, Terraform and APIM policy changes go through pull request, with a reviewer distinct from the author enforced by GitHub rulesets. The manifest's authorization fields (callers, user\_roles, tools, action classes, tier) and the role-to-container mapping sit in their own file, with EIAM as a required code owner. | GitHub rulesets | Self-approval of a manifest PR is blocked | IAM-28 |
+| **DEC-IAM-27** | MUST | Humans never authenticate as workload identities, and workload identities have no interactive sign-in path. | Entra | No human owners on the V1 app registrations; credential inventory matches DEC-IAM-15; no user account is used by any pipeline or service on the path | IAM-34 |
 | **DEC-IAM-28** | MUST | Every hop (APIM northbound, Foundry, tool gateway, Knowledge MCP) emits an evidence record containing correlation\_id, agent identity ID, pseudonymous user OID, lane outcome, grant, outcome (allow, 401, 403 or 429) and reason code. Records carry identifiers only, never content, and completeness is 100% on sampled hops. | APIM · Foundry · MCP · DCR | Completeness query = 100% on the sampled set | IAM-48 |
-| **DEC-IAM-29** | MUST | Entra sign-in and audit logs for P-01 and P-04 to P-13 flow to the central Log Analytics and Sentinel workspace over AMPLS, with 90-day interactive and 7-year archive retention. | Entra diagnostics · Sentinel | Each principal's sign-ins queryable by correlation window | IAM-48 |
+| **DEC-IAM-29** | MUST | Entra sign-in and audit logs for P-01 and P-04 to P-13 flow to the central Log Analytics and Sentinel workspace over AMPLS, with retention per the Microsoft Sentinel LLD v8.0 standard (550 days total; Data Lake beyond that only with an approved purpose). | Entra diagnostics · Sentinel | Each principal's sign-ins queryable by correlation window | IAM-48 |
 | **DEC-IAM-30** | SHOULD | Starter identity detections cover 401/403 spikes per agent, agent identity sign-ins from an unexpected source, release identity activity outside pipeline runs, and signing-key operations. | Sentinel | Each rule fires on a seeded test event | n/a |
 | **DEC-IAM-31** | MUST | Kill-switch step 1 (disable the APIM route, revoke the manifest row) is executable by the PIM-activated kill-switch authority, with time-to-deny measured and recorded. | APIM · manifest · PIM | Time-to-deny recorded on the first governed run | IAM-36 |
-| **DEC-IAM-32** | SHOULD | Identity-level containment is exercised once: disable the agent identity and quarantine the Agent 365 record, then record the time until model and tool calls fail. The run documents that tokens already issued remain valid until expiry. | Entra · Agent 365 | Measured time recorded alongside the route-level time-to-deny | IAM-36 |
+| **DEC-IAM-32** | SHOULD | Identity-level containment is exercised once: disable the agent identity and quarantine the Agent 365 record, using the Agent ID operation and role that EIAM validates in Dev first, then record the time until model and tool calls fail. The run documents that tokens already issued remain valid until expiry. | Entra · Agent 365 | Measured time recorded alongside the route-level time-to-deny | IAM-36 |
 
 ### Assumptions
 
@@ -168,15 +179,15 @@ If any assumption proves false, the linked requirements must be revisited before
 | --- | --- | --- |
 | **A-01** | Scope | December 2026 covers basic-agent V1 in Dev only: subscription sub-01-nprd-01, resource group rg-aif-dev-cac-01, project proj-iso-dev-cac-01. Test, Prod and promotion are parked. |
 | **A-02** | Data | Only synthetic Tier 1 FAQ data is used. No real client, employee or Restricted data reaches any component. |
-| **A-03** | Users | Callers are internal Entra member users only, using the internal test application. There are no guests, external users or customers. |
-| **A-04** | Groups | faq-all-staff and faq-platform-team are Entra security groups. Their membership is managed by the existing enterprise process, and SailPoint is not changed for V1. |
-| **A-05** | Licensing | An Agent 365 licence is available for the sponsor, as the use-case deck states. Broader Agent 365 licensing (D6) is not required for December. |
+| **A-03** | Users | Callers are internal Entra member users only, using the internal test application. There are no guests, external users or customers. This is enforced, not assumed: APIM northbound requires acct = 0, and a guest negative test is in the test plan. |
+| **A-04** | Groups | faq-all-staff and faq-platform-team are Entra security groups. Their membership is managed by the existing enterprise process, and SailPoint is not changed for V1. Each group is assigned to its gateway API app role. Group existence, owners, approvers and review cadence are to be confirmed by EIAM before readiness. |
+| **A-05** | Licensing | An Agent 365 licence is available for the sponsor, as the use-case deck states. Broader Agent 365 licensing (D6) is not required for December. Licensing relied on: Entra ID P1 (app role assignment to groups, Conditional Access); Entra ID P2 or ID Governance (PIM); Agent 365 for the sponsor. Not required for December: Conditional Access or ID Protection for agents, Workload ID Premium. Licensing for Entra Agent ID and app management policies to be confirmed by EIAM. |
 | **A-06** | Platform | Foundry hosted agents with network injection, platform-managed state and agent identity at version create are available in Canada Central for the Dev project, as the use-case deck asserts. Not independently verified here. |
 | **A-07** | Delegated context | The context format (claims, TTL, audience, header) is not yet specified in the use-case deck. The requirements here propose the minimum bindings (DEC-IAM-10 to 13). |
 | **A-08** | Tool gateway token | The agent obtains a token with audience = tool gateway API. Granting an app role on that API to the agent identity is proposed, not yet designed. |
 | **A-09** | Pipeline identities | The seed job and the Terraform workspace authenticate through OIDC federation. Not confirmed in the use-case deck. |
-| **A-10** | Evidence | The central Log Analytics and Sentinel workspace, AMPLS and the 90-day / 7-year retention already exist and are reused. |
-| **A-11** | Conditional Access for agents | Not configured for December because it is preview and licence-dependent. Agent containment relies on the APIM route. |
+| **A-10** | Evidence | The central Log Analytics and Sentinel workspace and AMPLS already exist and are reused; retention follows the Sentinel LLD v8.0 standard (550 days). |
+| **A-11** | Conditional Access for agents | Not configured for December because it is preview and licence-dependent. December tests run interactively with named test accounts; there are no Conditional Access exclusions. Agent containment relies on the APIM route. |
 | **A-12** | Target state | The v1.2 reference architecture remains the target. Nothing in the December design forecloses it; every divergence is recorded as a known gap. |
 
 **Engineering attention (EA-18, EA-23)**
@@ -193,11 +204,11 @@ Six open design decisions, each blocking a named flow. Q-01 and Q-03 together de
 
 | **ID** | **Decision needed** | **Owner** | **Needed by** |
 | --- | --- | --- | --- |
-| **Q-01** | Delegated context specification: format (JWS?), claim set, TTL, audience, header name, verification at the tool gateway and MCP. | AI Platform team | Before build of flows 1 and 3 |
+| **Q-01** | Delegated context specification: format (JWS?), claim set, TTL, audience, header name, verification at the tool gateway and MCP. Proposed position (26 Nov): a pinned public key in APIM named values, selected by kid; JWKS once there is more than one verifier. | AI Platform team | Before build of flows 1 and 3 |
 | **Q-02** | Exact role and scope APIM's managed identity holds to invoke basic-agent: agent application or project. | AI Platform team | Before build of flow 1 |
-| **Q-03** | How the agent identity is authorized at the tool gateway: app role on the tool gateway API (proposed) or validation of the agent identity ID only. | AI Platform team + EIAM | Before build of flow 3 |
-| **Q-04** | Group claim configuration on the gateway API: groups assigned to the application, or app roles mapped from groups. | EIAM | Before build of flow 1 |
-| **Q-05** | Target time-to-deny for kill-switch step 1, and whether identity-level containment (DEC-IAM-32) is in the December test plan. | Security Architecture | Before the first governed run |
+| **Q-03** | How the agent identity is authorized at the tool gateway: app role on the tool gateway API (proposed) or validation of the agent identity ID only. Closed 26 Nov: app role Tools.Invoke, assigned once by a PIM-activated EIAM administrator. | AI Platform team + EIAM | Before build of flow 3 |
+| **Q-04** | Group claim configuration on the gateway API: groups assigned to the application, or app roles mapped from groups. Closed 26 Nov: app roles mapped from groups. | EIAM | Before build of flow 1 |
+| **Q-05** | Target time-to-deny for kill-switch step 1, and whether identity-level containment (DEC-IAM-32) is in the December test plan. The identity-level exercise is included for December. Proposed target 60 seconds (CTM blueprint), measured from the accepted containment command; approval pending. | Security Architecture | Before the first governed run |
 | **Q-06** | Identity and scope of the Terraform Cloud workspace that applies the manifest, and who may approve manifest PRs. | AI Platform team | Before build of flow 4 |
 
 ## Impacted Business Applications
@@ -211,12 +222,12 @@ Applications and platforms touched by the V1 IAM design. Application IDs (APM) t
 | Knowledge MCP and FAQ storage | New | MCP managed identity with container-scoped read; two FAQ containers with synthetic Tier 1 data; seed job identity as sole writer |
 | Azure API Management | Existing platform, new APIs | Northbound and tool gateway APIs; managed identity invokes the agent and signs the delegated context |
 | Microsoft Foundry (aif-shared-dev-cac-01 / proj-iso-dev-cac-01) | Existing account, configured for V1 | Local auth disabled; model deployment allow-list by Azure Policy; project managed identity holds no roles |
-| Microsoft Entra ID | Existing, configuration change | Gateway API and tool gateway API registrations; group claims; app role assignment to the agent identity; PIM-eligible roles |
+| Microsoft Entra ID | Existing, configuration change | Gateway API and tool gateway API registrations; app roles for users and Tools.Invoke for the agent identity; PIM-eligible roles. All Entra objects are created and administered by EIAM. |
 | Agent 365 | New use | Registry of record for basic-agent; publish requires approval |
 | Azure Key Vault | New key (vault to be confirmed) | Non-exportable signing key hca-delegated-context-sign; sign permission for APIM only |
 | GitHub and Terraform Cloud | Pipeline tooling per use-case deck; new identities | OIDC-federated release, seed and Terraform identities; rulesets enforce PR review on manifest, Terraform and APIM policy |
 | Log Analytics and Microsoft Sentinel | Existing workspace assumed (A-10); new sources | Evidence at four hops and Entra logs for V1 principals; starter identity detections |
-| SailPoint Identity Security Cloud | Unchanged | Not changed for V1; user entitlements come from Entra group membership (KG-05, KG-06) |
+| SailPoint Identity Security Cloud | Unchanged | Not changed for V1; user entitlements come from app roles assigned to Entra groups (KG-05, KG-06) |
 
 # Architecture Overview
 
@@ -226,12 +237,12 @@ Applications and platforms touched by the V1 IAM design. Application IDs (APM) t
 
 | **Checkpoint** | **Decision** | **Enforced at** | **What is checked** | **On failure** |
 | --- | --- | --- | --- | --- |
-| **A** | User to agent | APIM northbound | validate-jwt (aud, iss, tid, scope); internal-user group; caller app on allowlist; Agent 365 record + manifest row exists | 401 / 403 with reason record |
+| **A** | User to agent | APIM northbound | validate-jwt (aud = gateway API client ID, iss, tid, scp); Agent.Use role; acct = 0; caller app on allowlist; Agent 365 record + manifest row exists | 401 / 403 with reason record |
 | **B** | Token issuance | Entra ID | User: Conditional Access at sign-in. Agent: token issued to the agent identity via its blueprint. Conditional Access for agents is not in V1 | No token |
 | **C** | Agent to tool | APIM tool gateway | Both lanes: agent token (aud = tool gateway) AND valid signed context; grant list\_faq\_topics / get\_faq; action class Read; result screening | 401 / 403 with reason record |
-| **D** | Tool to data | Knowledge MCP + Storage | Groups in the signed context map to containers; topic id in, never a path; MCP identity is Blob Data Reader on the two containers; Storage PE from snet-mcp only | Empty result or 403; fail closed |
+| **D** | Tool to data | Knowledge MCP + Storage | FAQ roles in the signed context map to containers; topic id in, never a path; MCP identity is Blob Data Reader on the two containers; Storage PE from snet-mcp only | Empty result or 403; fail closed |
 
-Effective authority in V1 = manifest grant ∩ the user's mapped groups ∩ tier ceiling. No deny is overridden by an allow.
+Effective authority in V1 = manifest grant ∩ the user's FAQ roles ∩ tier ceiling. No deny is overridden by an allow.
 
 ### Changes from the target-state architecture
 
@@ -239,11 +250,11 @@ There is no Discovery Blueprint; the reference point is the IAM Control Referenc
 
 | **Area** | **Target state (v1.2)** | **December V1** | **Gap** | **Closes with** |
 | --- | --- | --- | --- | --- |
-| User authority on the tool path | Entra on-behalf-of (OBO) | APIM-signed delegated context, short TTL, bound to agent and request | KG-01 | Revisit OBO when Write actions or real data arrive (V1.1) |
-| Authorization decision | Runtime decision point with decision records | Static: manifest grants, token groups, tier ceiling; reason record on every deny | KG-02 | Wave 3 decision point before Tier 2 or real data |
-| Data access | Permission-aware retrieval in the user's context | MCP reads as itself; group-to-container mapping in MCP code | KG-03 | ACL-trimmed retrieval in the V1.1 grounding design |
+| User authority on the tool path | Entra on-behalf-of (OBO) | APIM-signed delegated context, short TTL, bound to agent and request; OBO spike in Dev in parallel to inform V1.1 | KG-01 | Revisit OBO when Write actions or real data arrive (V1.1) |
+| Authorization decision | Runtime decision point with decision records | Static: manifest grants, token app roles, tier ceiling; reason record on every deny | KG-02 | Wave 3 decision point before Tier 2 or real data |
+| Data access | Permission-aware retrieval in the user's context | MCP reads as itself; role-to-container mapping held as configuration | KG-03 | ACL-trimmed retrieval in the V1.1 grounding design |
 | Data policy on model calls | Purview enforcement with user context | No user context on the model call; Purview audits only | KG-04 | User context on model calls or compensating DLP before real data |
-| Agent and user entitlements | SailPoint access packages, certification, entitlement snapshots | Grants by pull request; user entitlements from token groups | KG-05, KG-06 | SailPoint governance (D1) before Prod |
+| Agent and user entitlements | SailPoint access packages, certification, entitlement snapshots | Grants by pull request; user entitlements from token app roles | KG-05, KG-06 | SailPoint governance (D1) before Prod |
 | Revocation | Token-level, with kill-switch steps 1 to 5 | Route-level (step 1 only) | KG-07 | Kill-switch steps 2 to 5 (ATOS) |
 | Agent sign-in risk | Conditional Access and ID Protection for agents | Not configured (preview, licence-dependent) | KG-08 | Decision D6 and GA status, before Prod |
 
@@ -271,7 +282,7 @@ An internal user signs in to the internal test application and asks basic-agent 
 
 | **Persona** | **Role in V1** | **Identity** |
 | --- | --- | --- |
-| Internal user | Asks questions through the internal test application; sees only FAQ content their groups map to | P-01; internal-user group plus faq-all-staff and/or faq-platform-team |
+| Internal user | Asks questions through the internal test application; sees only FAQ content their roles map to | P-01; internal-user group (Agent.Use) plus faq-all-staff and/or faq-platform-team (FAQ roles) |
 | Sponsor | Named accountable owner on the Agent 365 record; approves publish | P-12 |
 | Technical owner | Named on the Agent 365 record; owns the manifest row | Agent 365 record |
 | Platform administrators and kill-switch authority | Administer Foundry, APIM, Key Vault, Agent 365, app registrations and Storage; execute kill-switch step 1 | P-13; PIM-eligible only |
@@ -285,18 +296,18 @@ An internal user signs in to the internal test application and asks basic-agent 
 | APIM northbound API | New API on existing APIM | Microsoft Azure API Management | Checkpoint A; validates the user token; signs the delegated context |
 | basic-agent | New | IGM-built on Agent Framework (Python); hosted in Microsoft Foundry | Answers FAQ questions; Responses protocol only |
 | APIM tool gateway API | New API on existing APIM | Microsoft Azure API Management | Checkpoint C; admits tool calls only with both identity lanes |
-| Knowledge MCP | New | IGM-built MCP server | Checkpoint D; maps user groups to FAQ containers |
+| Knowledge MCP | New | IGM-built MCP server | Checkpoint D; maps user FAQ roles to FAQ containers |
 | Agent 365 | New use | Microsoft | Registry of record for the agent; publish approval |
 
 ### User sign-in and token handling
 
-Users sign in to Entra with SSO, MFA and Conditional Access. Assignment is required on the gateway API's enterprise application, and the internal-user group is the only assignment (DEC-IAM-06). At APIM northbound the token is checked for signature, issuer, tenant, audience, scope and expiry, and the calling application's client ID must be on the allowlist (DEC-IAM-07).
+Users sign in to Entra with SSO, MFA and Conditional Access. Assignment is required on the gateway API's enterprise application. The gateway API defines three app roles, Agent.Use, FAQ.AllStaff and FAQ.PlatformTeam (names to confirm), assigned to the internal-user group, faq-all-staff and faq-platform-team respectively, with direct membership only (nested group membership is not honoured). APIM northbound requires Agent.Use and acct = 0 (member, not guest) (DEC-IAM-06, 08). At APIM northbound the token is checked for signature, issuer, tenant, audience, scope and expiry, and the calling application's client ID must be on the allowlist (DEC-IAM-07).
 
-A JWT carries at most 200 groups; beyond that Entra omits the claim and sends an overage indicator. The gateway API is configured to emit only groups assigned to the application, which keeps the FAQ groups in the token for every user. APIM still refuses a token with an overage indicator or no groups claim, because the MCP would otherwise be handed an empty or default group list (DEC-IAM-08). The user token is consumed at APIM; nothing downstream receives it (DEC-IAM-09).
+The token carries a small roles claim instead of group object IDs, so group overage cannot occur and the MCP maps readable role values to containers. APIM refuses a token without Agent.Use; a token with no FAQ role reaches no content (DEC-IAM-08). The user token is consumed at APIM; nothing downstream receives it (DEC-IAM-09).
 
 **Engineering attention (EA-09, EA-10, EA-11)**
 
-**EA-09 · High.** Groups arrive as object IDs and nested membership is dropped; map on object IDs and use direct membership in assigned groups.
+**EA-09 · High.** (Revised in v1.2.) With app roles assigned to groups, nested membership is still not honoured, so users must be direct members of the assigned groups. Key the MCP mapping on role values held as configuration.
 
 **EA-10 · Medium.** Fix both APIs on v2 tokens; validate the v2 issuer and use azp for the caller allowlist.
 
@@ -307,7 +318,7 @@ A JWT carries at most 200 groups; beyond that Entra omits the claim and sends an
 ### Related process updates
 
 - **Agent publish:** requires an Agent 365 record with a named sponsor and technical owner, and publish approval (DEC-IAM-02).
-- **Agent grants:** approved as pull requests to the manifest, reviewed by someone other than the author (DEC-IAM-26). No access-request process for agent entitlements in V1 (KG-05).
+- **Agent grants:** approved as pull requests to the manifest (authorization fields in their own file, with EIAM as required code owner), reviewed by someone other than the author (DEC-IAM-26). No access-request process for agent entitlements in V1 (KG-05).
 - **User access:** membership of faq-all-staff and faq-platform-team is managed by the existing enterprise process; SailPoint is unchanged for V1 (A-04).
 
 ## Data & AI
@@ -317,11 +328,11 @@ A JWT carries at most 200 groups; beyond that Entra omits the claim and sends an
 The request path is drawn in Figure 1 under Architecture Overview; the numbered steps below follow its circles.
 
 1. The user signs in to the internal test application (Entra SSO, MFA, Conditional Access) and calls the APIM northbound route. The token's audience is the gateway API.
-2. APIM validates the token, checks group membership and the calling application, and confirms that basic-agent has both an Agent 365 record and a manifest row. It mints the correlation\_id, signs the delegated context and forwards the request over the private endpoint as its own managed identity. The user token is not forwarded.
+2. APIM validates the token, checks the Agent.Use role, member status and the calling application, and confirms that basic-agent has both an Agent 365 record and a manifest row. It mints the correlation\_id, signs the delegated context and forwards the request over the private endpoint as its own managed identity. The user token is not forwarded.
 3. The agent calls the pinned model as its agent identity. There is no user context on this call.
 4. If the model chooses a tool, the agent calls the APIM tool gateway with its own token (audience = tool gateway) and the signed context.
 5. The tool gateway checks both, checks that they belong to the same request, checks the grant and the Read action class, and forwards to the Knowledge MCP.
-6. The MCP maps the context's groups to containers and reads only those. The response carries blob name, version and label for citation, and APIM screens it on the way back.
+6. The MCP maps the context's FAQ roles to containers and reads only those. The response carries blob name, version and label for citation, and APIM screens it on the way back.
 
 Every hop (APIM northbound, Foundry, tool gateway, Knowledge MCP) writes an evidence record with identifiers only, never prompt or file content (DEC-IAM-28).
 
@@ -331,18 +342,18 @@ Every hop (APIM northbound, Foundry, tool gateway, Knowledge MCP) writes an evid
 | --- | --- | --- | --- | --- | --- | --- |
 | APM000\*\*\* (to be confirmed) | basic-agent V1 FAQ store (Knowledge MCP and FAQ storage) | Synthetic data, Tier 1 (A-02) | n/a | n/a | n/a | No Data Exposure Strategy change for December: synthetic Tier 1 FAQ data only, no book of record. A Data Exposure Strategy is required before the pattern carries real data (KG-03, KG-04). |
 
-Storage never sees the user. The Knowledge MCP reads blobs as its own managed identity, which makes the MCP's group-to-container mapping the real data-access control: a confused-deputy arrangement (KG-03). For synthetic data V1 compensates in four ways:
+Storage never sees the user. The Knowledge MCP reads blobs as its own managed identity, which makes the MCP's role-to-container mapping the real data-access control: a confused-deputy arrangement (KG-03). For synthetic data V1 compensates in four ways:
 
 - The MCP identity's reader role is assigned per container, not on the storage account (DEC-IAM-23).
 - The MCP accepts a topic ID and never a path (DEC-IAM-22).
 - It returns nothing when the context is missing, invalid or maps to no container (DEC-IAM-22).
-- The negative test requires two users in different groups to see different topic lists.
+- The negative test requires two users with different FAQ roles to see different topic lists.
 
-| **User group (from signed context)** | **Container returned** | **Tools** |
+| **User FAQ role (from signed context)** | **Container returned** | **Tools** |
 | --- | --- | --- |
 | faq-all-staff | faq-all-staff | list\_faq\_topics, get\_faq (Read) |
 | faq-platform-team | faq-platform-team | list\_faq\_topics, get\_faq (Read) |
-| Any other group, or none | None (empty result) | — |
+| Any other role, or none | None (empty result) | — |
 
 **Before real data**
 
@@ -350,7 +361,7 @@ Purview data security policies for Foundry are enforced only on calls that carry
 
 **Engineering attention (EA-09, EA-27)**
 
-**EA-09 · High.** Groups arrive as object IDs and nested membership is dropped; map on object IDs and use direct membership in assigned groups.
+**EA-09 · High.** (Revised in v1.2.) With app roles assigned to groups, nested membership is still not honoured, so users must be direct members of the assigned groups. Key the MCP mapping on role values held as configuration.
 
 **EA-27 · High.** Restrict MCP ingress to APIM, require APIM's token on the MCP, and decide whether the MCP re-verifies the context.
 
@@ -402,7 +413,7 @@ No user context reaches the model. The agent identity holds Azure AI User (renam
 
 ### Registration and lifecycle
 
-The Agent 365 record holds the sponsor, the technical owner, the binding to the agent identity and the publish approval (DEC-IAM-02). After creation, lifecycle actions are manual: quarantine in Agent 365, disablement in Entra, retirement by removing the manifest row and the agent version. Sponsor departure, richer lifecycle states and state deletion are deferred; deletion could not be evidenced anyway because conversation state is held by Microsoft (KG-09).
+The Agent 365 record holds the sponsor, the technical owner, the binding to the agent identity and the publish approval (DEC-IAM-02). After creation, lifecycle actions are manual: quarantine in Agent 365, disablement in Entra, retirement by removing the manifest row and the agent version. Sponsor departure, richer lifecycle states and state deletion are deferred (a sponsor and owner validity check runs at the readiness review); deletion could not be evidenced anyway because conversation state is held by Microsoft (KG-09).
 
 **Engineering attention (EA-07, EA-14, EA-26)**
 
@@ -422,23 +433,23 @@ The Agent 365 record holds the sponsor, the technical owner, the binding to the 
 | --- | --- | --- |
 | Azure API Management: northbound API | Single front door for the agent; validates the user token and admits only registered agents (checkpoint A) | Existing API platform; new route |
 | Azure API Management: tool gateway API | Gateway between agent and tools; requires both identity lanes (checkpoint C) | New pattern |
-| APIM-signed delegated context | Carries the user's identity and groups from APIM to the tool path in place of OAuth on-behalf-of | New pattern (KG-01) |
+| APIM-signed delegated context | Carries the user's identity and FAQ roles from APIM to the tool path in place of OAuth on-behalf-of | New pattern (KG-01) |
 | Model Context Protocol (MCP) | Agent-to-tool protocol for the Knowledge MCP | New for IGM |
 | Manifest → Terraform → APIM | APIM routes, tool grants, limits, budget and the Palo Alto EDL compiled from the merged manifest joined to the Agent 365 record; never hand-edited (DEC-IAM-03) | New pattern |
 
 ### Delegated context (new pattern)
 
-APIM turns the validated user token into a short signed statement of who the user is and which groups they hold, carried in the x-client header. Because it asserts a user's authority, it is protected the same ways a token is. The use-case deck names the signing key (hca-delegated-context-sign) but leaves the format open (Q-01); the minimum proposed for December:
+APIM turns the validated user token into a short signed statement of who the user is and which FAQ roles they hold, carried in the x-client header. Because it asserts a user's authority, it is protected the same ways a token is. The use-case deck names the signing key (hca-delegated-context-sign) but leaves the format open (Q-01); the minimum proposed for December:
 
 | **Property** | **Minimum for December** | **Requirement** |
 | --- | --- | --- |
-| **Built from** | Claims from the validated token only (user OID, tenant, groups), plus purpose and tier from the manifest. Any x-client or identity header supplied by the caller is removed on entry. | DEC-IAM-10 |
+| **Built from** | Claims from the validated token only (user OID, tenant, FAQ roles), plus purpose and tier from the manifest. Any x-client or identity header supplied by the caller is removed on entry. | DEC-IAM-10 |
 | **Signed with** | hca-delegated-context-sign in Key Vault. Non-exportable; the APIM managed identity has sign permission and nothing else. | DEC-IAM-11 |
 | **Lifetime** | iat and exp; 5 minutes or less (proposed). | DEC-IAM-11 |
 | **Audience** | The tool gateway. | DEC-IAM-11 |
 | **Bound to** | The request's correlation\_id and the object ID of basic-agent's agent identity. | DEC-IAM-11 |
 | **Verified at** | The tool gateway: signature, expiry and audience; agent\_id must equal the agent token's oid; correlation\_id must equal the request's. | DEC-IAM-12 |
-| **Consumed by** | The Knowledge MCP, which maps groups to containers and returns nothing if the context is missing, invalid or maps to no container. | DEC-IAM-22 |
+| **Consumed by** | The Knowledge MCP, which maps FAQ roles to containers and returns nothing if the context is missing, invalid or maps to no container. | DEC-IAM-22 |
 | **Rotation** | 90 days (proposed). Both keys verify during rollover; an emergency rotation is documented. | DEC-IAM-13 |
 
 ##### **Example context payload (JWS, signed by APIM). Claim names are proposals pending Q-01.**
@@ -516,7 +527,7 @@ Checkpoint C is where the two lanes meet, so it is where a mistake in policy mat
 
 - **Release pipeline (GitHub):** sp-hca-release deploys and registers agent versions through a GitHub OIDC federated credential; it cannot create model deployments, edit APIM policy or assign roles (DEC-IAM-16).
 - **Seed pipeline (GitHub):** the seed job identity is the only writer to the FAQ containers and runs only from a merged PR.
-- **Terraform Cloud:** applies the compiled manifest; scoped to the Dev resource group and APIM instance. Identity and approvers open (Q-06).
+- **Terraform Cloud:** applies the compiled manifest; scoped to the Dev resource group and APIM instance; manages Azure resources only and holds no Microsoft Graph write permission. Identity and approvers open (Q-06). Entra objects (app registrations, app roles and assignments, federated credentials) are created and administered by EIAM through PIM.
 - A scheduled drift check is expected to return zero; a request for an agent with no record or manifest row gets 403 and a reason record (DEC-IAM-03).
 
 **Engineering attention (EA-25)**
@@ -529,37 +540,37 @@ Checkpoint C is where the two lanes meet, so it is where a mistake in policy mat
 
 ### Identity and access services and patterns
 
-**Services:** Microsoft Entra ID (users, app registrations, group claims, PIM), Microsoft Entra Agent ID (agent identity and blueprint), Agent 365 (agent registry), Azure API Management (checkpoints A and C), Azure Key Vault (context-signing key), Azure RBAC and Azure Policy (resource authorization).
+**Services:** Microsoft Entra ID (users, app registrations, app roles, PIM), Microsoft Entra Agent ID (agent identity and blueprint), Agent 365 (agent registry), Azure API Management (checkpoints A and C), Azure Key Vault (context-signing key), Azure RBAC and Azure Policy (resource authorization).
 
 **Pattern:** two identity lanes that never merge. The user's token stops at APIM; downstream, user authority travels only in the APIM-signed context and agent authority only in tokens issued to the agent identity. Four checkpoints, each refusing by default (see Architecture Overview).
 
 **Authorization rule.** v1.2 defines effective authority as registered scope ∩ access package ∩ initiator entitlements ∩ autonomy tier, evaluated on each call. V1 has three of those terms, all fixed at deployment time: **effective\_authority = manifest\_grant ∩ user\_mapped\_groups ∩ tier\_ceiling**.
 
 - Registered scope is the manifest grant: list\_faq\_topics and get\_faq, action class Read.
-- Initiator entitlements are the user's FAQ groups, copied from the token into the signed context. They are only as current as the token, since SailPoint is not consulted (KG-06).
+- Initiator entitlements are the user's FAQ roles, copied from the token into the signed context. They are only as current as the token, since SailPoint is not consulted (KG-06).
 - Autonomy tier is the Tier 1 ceiling on the manifest row, checked at merge (DEC-IAM-05).
 - The access package term is missing; agent grants are approved as pull requests (KG-05). Nothing is evaluated per call and no decision record is written (KG-02).
 
-Where any check denies, the request is denied. No path may return content from a container that the user's groups do not map to (DEC-IAM-24).
+Where any check denies, the request is denied. No path may return content from a container that the user's FAQ roles do not map to (DEC-IAM-24).
 
 ### Business user and access roles
 
 | **Role or group** | **Type** | **Grants** |
 | --- | --- | --- |
-| internal-user group | Entra security group (name to be confirmed) | Only assignment on the gateway API enterprise application; required to obtain a token |
-| faq-all-staff | Entra security group | Maps to the faq-all-staff container |
-| faq-platform-team | Entra security group | Maps to the faq-platform-team container |
+| internal-user group | Entra security group (name to be confirmed) | Assigned to app role Agent.Use on the gateway API; required to use the agent |
+| faq-all-staff | Entra security group | Assigned to app role FAQ.AllStaff; maps to the faq-all-staff container |
+| faq-platform-team | Entra security group | Assigned to app role FAQ.PlatformTeam; maps to the faq-platform-team container |
 | Tools.Invoke (proposed) | App role on the tool gateway API, assigned to the agent identity | Lets basic-agent call the tool gateway (Q-03) |
 
 ### Identity inventory
 
-Every principal that authenticates on, or administers, the V1 path. P-01 to P-03 belong to the human side and stop at APIM; P-04 to P-11 are workload identities; P-12 and P-13 govern or operate the agent and never appear in a request. A signed copy is a condition of the V1 readiness review (DEC-IAM-04).
+Every principal that authenticates on, or administers, the V1 path. P-01 to P-03 belong to the human side and stop at APIM; P-04 to P-11 are workload identities; P-12 and P-13 govern or operate the agent and never appear in a request. A signed copy is a condition of the V1 readiness review (v1.2 adds the agent identity blueprint and its principal, the Tools.Invoke assigner, the kill-switch operator group, the PIM approver group and test user accounts; EIAM attests the Entra objects against an Entra export and Security Architecture signs) (DEC-IAM-04).
 
 | **ID** | **Principal** | **Lane** | **Authenticates by** | **Holds (least privilege)** |
 | --- | --- | --- | --- | --- |
-| **P-01** | Internal user | Human | Entra SSO, MFA, Conditional Access at sign-in | Membership of the internal-user group and one or both FAQ access groups (faq-all-staff, faq-platform-team) |
-| **P-02** | Internal test application | Human | OAuth authorization code + PKCE; public or confidential client to confirm | Delegated permission to the gateway API scope only; client ID on the APIM caller allowlist |
-| **P-03** | Gateway API | Human | n/a (resource) | Exposes the invoke scope; assignment required = internal-user group; emits groups assigned to the application |
+| **P-01** | Internal user | Human | Entra SSO, MFA, Conditional Access at sign-in | Direct membership of the internal-user group and one or both FAQ access groups (faq-all-staff, faq-platform-team), giving the matching app roles |
+| **P-02** | Internal test application | Human | OAuth authorization code + PKCE; public or confidential client to confirm; target: public client (SPA), no credential; hosting and redirect URIs to be confirmed by AI Platform | Delegated permission to the gateway API scope only; client ID on the APIM caller allowlist |
+| **P-03** | Gateway API | Human | n/a (resource) | Exposes the invoke scope; app roles Agent.Use, FAQ.AllStaff, FAQ.PlatformTeam assigned to the three groups; assignment required; no groups claim; acct optional claim |
 | **P-04** | APIM managed identity | Workload | Managed identity token | Invoke right on basic-agent only; Key Vault sign (not get/export) on the context-signing key |
 | **P-05** | basic-agent agent identity | Workload | Agent identity token issued via its blueprint; no secret in the agent | Azure AI User (Foundry User) for the pinned deployment; app role on the tool gateway API (proposed) |
 | **P-06** | Tool gateway API | Workload | n/a (resource) | Defines the app role granted to basic-agent (proposed: Tools.Invoke) |
@@ -618,7 +629,7 @@ Infrastructure placement diagram (subscription, VNet, subnets, private endpoints
 
 ### End User Compute
 
-The IAM design requires no installation or configuration on end-user devices. Users reach basic-agent only through the internal test application (P-02; public or confidential client to be confirmed), signing in with Entra SSO, MFA and the existing enterprise Conditional Access, which applies whatever the device (DEC-IAM-06).
+The IAM design requires no installation or configuration on end-user devices. Users reach basic-agent only through the internal test application (P-02; public client (SPA), hosting to be confirmed by AI Platform), signing in with Entra SSO, MFA and the existing enterprise Conditional Access, which applies whatever the device (DEC-IAM-06).
 
 | **Device type** | **IAM change for V1** |
 | --- | --- |
@@ -692,7 +703,7 @@ No new third-party network connections are introduced by the IAM design. The mod
 
 #### End-user identity and access management
 
-Internal Entra member users only, with SSO, MFA and Conditional Access; assignment required on the gateway API; FAQ access by Entra group. Detail under Detailed Architecture → Security.
+Internal Entra member users only, with SSO, MFA and Conditional Access; assignment required on the gateway API; FAQ access by app role assigned to Entra groups. Detail under Detailed Architecture → Security.
 
 #### Non-human accounts
 
@@ -712,7 +723,7 @@ None holds a client secret, and none has an interactive sign-in path (DEC-IAM-15
 
 | **Object** | **Type** | **Key configuration** |
 | --- | --- | --- |
-| Gateway API (P-03) | App registration, resource | Exposes the invoke scope; assignment required; emits groups assigned to the application (DEC-IAM-06, 08) |
+| Gateway API (P-03) | App registration, resource | Exposes the invoke scope; app roles assigned to the three groups; assignment required; no groups claim; acct optional claim (DEC-IAM-06, 08) |
 | Tool gateway API (P-06) | App registration, resource | Defines the app role granted to basic-agent (proposed Tools.Invoke) |
 | Internal test application (P-02) | App registration, client | Authorization code + PKCE; delegated permission to the gateway API only |
 | basic-agent identity blueprint | Entra Agent ID blueprint | Created with the agent in Foundry; issues the agent identity's tokens |
@@ -735,7 +746,7 @@ APIM-signed delegated context with a non-exportable Key Vault signing key; APIM 
 
 Each of the four hops (APIM northbound, Foundry, tool gateway, Knowledge MCP) writes an evidence record: correlation\_id, agent identity ID, pseudonymous user OID, lane outcome, grant, result (allow, 401, 403 or 429) and reason code, never prompt or file content. Every hop must be present on the sampled set (DEC-IAM-28).
 
-Entra sign-in and audit logs for all principals go to the central Log Analytics and Sentinel workspace over AMPLS, with 90-day online and 7-year archive retention as specified (DEC-IAM-29). Four starter detections are proposed: 401/403 bursts for the agent, agent identity sign-ins from an unexpected source, release identity activity outside a pipeline run, and any operation on the signing key (DEC-IAM-30). The unified audit envelope and replayable incident reconstruction are ATOS deliverables, not V1.
+Entra sign-in and audit logs for all principals go to the central Log Analytics and Sentinel workspace over AMPLS, with retention per the Sentinel LLD v8.0 standard (DEC-IAM-29). Four starter detections are proposed: 401/403 bursts for the agent, agent identity sign-ins from an unexpected source, release identity activity outside a pipeline run, and any operation on the signing key (DEC-IAM-30). The unified audit envelope and replayable incident reconstruction are ATOS deliverables, not V1.
 
 **Engineering attention (EA-22, EA-23, EA-24)**
 
@@ -767,7 +778,7 @@ Evidence at four hops and starter identity detections (see Infrastructure → Se
 
 #### Containment
 
-Kill-switch step 1 disables the APIM route and revokes the manifest row. The PIM-activated kill-switch authority executes it, and the time-to-deny from the first governed run is recorded (DEC-IAM-31).
+Kill-switch step 1 disables the APIM route and revokes the manifest row. The PIM-activated kill-switch authority executes it, and the time-to-deny from the first governed run is recorded (DEC-IAM-31). The kill role may change only the two kill-switch named values: AI Platform proves this in Dev with a negative test, or the operator triggers a runbook that writes only those values. Activation needs no approval but raises an alert, and the time-to-deny clock starts at the accepted containment command.
 
 A second exercise is proposed at identity level (DEC-IAM-32): disable the agent identity, quarantine the Agent 365 record, and measure how long model and tool calls keep succeeding. Tokens issued before the disable remain valid until they expire, so this time will be longer than the route-level figure (KG-07). It is still worth measuring, because the route is not the control that will apply once more than one gateway path exists.
 
