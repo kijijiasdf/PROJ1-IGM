@@ -1,0 +1,706 @@
+# EIAM Comment Pack for Confluence
+IAM Blueprint (L2) and Detailed Design (LLD) | basic-agent V1 December showcase | Draft for discussion
+
+## General note (post first)
+
+[EIAM] General note: We reviewed this page from the Enterprise IAM (EIAM) side and added inline comments tagged [EIAM]. Tags: [Question] we need a decision or detail; [Clarification] the wording is ambiguous; [Correction] a likely technical inaccuracy (source given); [Alternative] a different approach with benefits and trade-offs; [Dependency] the answer sits with another team. Priority: P1 needed before EIAM can build or test; P2 needed before the readiness review; P3 nice to resolve. Everything here is open for discussion. Where we suggest an alternative, we would like to understand the rationale for the current choice before changing it. We are happy to take a time-boxed spike on any of the alternatives.
+
+## Start here
+
+- BP-01 | Header › Status | Clarification | P1
+- BP-04 | Requirements Update › Proposed items | Alternative | P1
+- BP-05 | Requirements catalogue › DEC-IAM-06 | Clarification | P1
+- BP-08 | Architecture Overview › Changes from target state (KG-01) | Alternative | P1
+- BP-11 | Requirements catalogue › DEC-IAM-20 | Alternative | P1
+- BP-15 | Requirements catalogue › DEC-IAM-31 | Question | P1
+- BP-22 | Impacted Business Applications › Microsoft Entra ID | Question | P1
+- LLD-02 | 3. Identity and Configuration Register › P-02 | Question | P1
+- LLD-06 | 5.3 Identity and secrets standard / 5.4 Approved authentication patterns | Correction | P1
+- LLD-08 | 6.1 User sign-in › Authentication | Question | P1
+- LLD-16 | 7.1 basic-agent agent identity › Expected claims | Correction | P1
+- LLD-18 | 7.4 Tool gateway › EA-08 | Alternative | P1
+- LLD-22 | 9.3 Terraform workspace identity P-11 | Question | P1
+- LLD-25 | 9.4 Privileged human access › Kill switch row | Question | P1
+
+## Part A. Implementation Blueprint
+
+### BP-01 | Header › Status
+**Highlight:** “Draft for AI Platform team and EIAM review, then the V1 readiness review”  
+**Type:** Clarification | **Priority:** P1 | **Linked:** AQ-01, AQ-26
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P1] Status says this is a draft for AI Platform and EIAM review. Could you confirm what EIAM is being asked to review versus approve (Entra objects, group claims, PIM, agent-identity governance) and which sections you expect us to sign off? The Low Level Design link is still 'to be linked', so please also confirm which LLD version is the baseline. That lets us scope our work and sign-off correctly.
+
+Why: Avoids EIAM signing off areas it does not own, and confirms the baseline version.
+
+### BP-02 | Introduction › Needed before build
+**Highlight:** “Six open questions each block a named flow.”  
+**Type:** Dependency | **Priority:** P1 | **Linked:** AQ-26
+
+Comment to paste:
+
+> [EIAM] [Dependency] [P1] EIAM owns Q-04 and shares Q-03. Could we agree target decision dates and a place to record outcomes (for example a decision log linked from this page)? Our implementation steps can't be finalised until these close, and dates will help us plan against the December showcase.
+
+Why: Decisions gate EIAM configuration; dates make the plan realistic.
+
+### BP-03 | Requirements Update › Changes since the target state
+**Highlight:** “These need confirmation by the AI Platform team and EIAM”  
+**Type:** Clarification | **Priority:** P1 | **Linked:** AQ-01
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P1] Five proposed items need confirmation by AI Platform and EIAM. For each one, could you mark whether EIAM is expected to approve it, implement it, or just be consulted? That stops us treating a proposal as an approved build item. We're happy to lead the Entra-specific ones (app role, group claims, federation) once the approach is agreed.
+
+Why: Separates approval, implementation, and consultation.
+
+### BP-04 | Requirements Update › Proposed items
+**Highlight:** “group claims limited to groups assigned to the application, failing closed on overage”  
+**Type:** Alternative | **Priority:** P1 | **Linked:** AQ-02, AQ-05
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P1] Q-04 asks whether to use 'groups assigned to the application' or 'app roles mapped from groups'. Have we considered app roles (allowed member types: users/groups) assigned to the internal-user, FAQ all-staff and platform-team groups? Benefits: the token carries a small roles claim, so the MCP maps role to container instead of holding group object IDs, and Microsoft's guidance recommends app roles to avoid group overage. Trade-offs: roles must be defined and maintained; group-based assignment still does not cascade to nested groups and needs Entra ID P1/P2. We're open to either. Could you share what drove the ApplicationGroup choice?
+
+Why: Microsoft recommends app roles as an alternative to group claims; assigned-groups claims need direct membership.  
+Source: Microsoft Learn: Configure group claims and app roles in tokens; Manage users and groups assignment to an application.
+
+### BP-05 | Requirements catalogue › DEC-IAM-06
+**Highlight:** “Only members of the internal-user group can obtain a token for the gateway API”  
+**Type:** Clarification | **Priority:** P1 | **Linked:** AQ-02
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P1] DEC-IAM-06 says only internal-user group members can obtain a token (assignment required). The LLD (§6.1/§6.3) also assigns faq-all-staff and faq-platform-team to the same enterprise application. With assignment required, a user in any assigned group can get a token, so someone in a FAQ group but not in internal-user could still obtain one and would only be stopped at APIM (DEC-IAM-17). Could we confirm the intent: (a) restate DEC-IAM-06 as 'any user assigned to the app' and keep the internal-user check at APIM, or (b) change the assignment/claims model so only internal-user members get a token? The DEC-IAM-06 test depends on the answer.
+
+Why: Assignment-required admits users of any assigned group; the requirement and LLD currently differ.  
+Source: Microsoft Learn: Configure group claims and app roles in tokens (assignment behaviour).
+
+### BP-06 | Requirements catalogue › DEC-IAM-07
+**Highlight:** “audience (gateway API)”  
+**Type:** Correction | **Priority:** P2 | **Linked:** AQ-06
+
+Comment to paste:
+
+> [EIAM] [Correction] [P2] For v2 access tokens, Entra sets aud to the API's client ID (GUID), while scopes are requested with the Application ID URI. Could the requirement and LLD say which value APIM validates, so the policy and the registration match? We suggest recording both the client ID and the identifier URI in the configuration catalogue (Appendix A) and validating the client ID GUID for v2 tokens.
+
+Why: Prevents an audience mismatch that rejects every call or leads to loosened validation.  
+Source: Microsoft Learn: Access token claims reference.
+
+### BP-07 | Requirements catalogue › DEC-IAM-08
+**Highlight:** “A test user in more than 200 groups”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-05
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] How do you expect the >200 groups test to be run in Dev? Creating a test user in 200+ groups is heavy. Because the app only emits groups assigned to it, overage should not occur on the normal path; the risk is how APIM handles an overage indicator. Would a synthetic token carrying the overage claim (APIM unit test) plus one real-user smoke test be acceptable? We can supply a test user and groups if a real test is required. Note Microsoft advises checking for the presence of the overage claim, not relying on its values.
+
+Why: A lighter, safer test with equal coverage of the failure mode.  
+Source: Microsoft Learn: Configure group claims and app roles in tokens.
+
+### BP-08 | Architecture Overview › Changes from target state (KG-01)
+**Highlight:** “APIM-signed delegated context, short TTL, bound to agent and request”  
+**Type:** Alternative | **Priority:** P1 | **Linked:** AQ-21
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P1] KG-01 records a signed context instead of OBO and suggests revisiting OBO in V1.1. Entra Agent ID now documents an OBO flow where the agent identity exchanges a user token and receives a token with the user as subject and the agent identified as the actor (azp, xms_act_fct includes 11). Potential benefits: Entra issues and signs the token (no custom signing path or key in APIM), Conditional Access and ID Protection evaluate the user, and the tool gateway reads standard claims. Constraints we see: a hosted agent cannot show a consent prompt, so permissions must be pre-authorised (inheritable permissions on the blueprint); a user token would have to reach the agent, which conflicts with DEC-IAM-09; and it changes the tool-path design. Was OBO evaluated for the Foundry hosted runtime, and what ruled it out? Could we time-box a Dev spike, or confirm signed context stays for December and OBO becomes a V1.1 candidate?
+
+Why: Gives the architect a documented alternative with explicit trade-offs, without blocking December.  
+Source: Microsoft Learn: Agent OAuth flows – On-behalf-of; Tokens in the Microsoft agent identity platform; Conditional Access for agents.
+
+### BP-09 | Requirements catalogue › DEC-IAM-15
+**Highlight:** “No client secret exists on the path.”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-07, AQ-19
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] Could we define the credential rule precisely: no password credentials, certificates allowed or not, federated credentials allowed? LLD §5.4 excludes certificates without an exception, while §6.2 allows a certificate for a confidential test client. A precise rule makes the credential-inventory test objective (for example passwordCredentials = 0, keyCredentials = 0, and the federated credential list matches the approved set).
+
+Why: Turns a general statement into a testable control.
+
+### BP-10 | Requirements catalogue › DEC-IAM-16
+**Highlight:** “bound to the protected environment and branch”  
+**Type:** Correction | **Priority:** P2 | **Linked:** AQ-12
+
+Comment to paste:
+
+> [EIAM] [Correction] [P2] The requirement binds the federated credential to the protected environment and branch, but the GitHub OIDC subject for an environment job contains the environment, not the branch (the LLD EA-18 says the same). Could we reword to: subject pinned to the protected environment (exact, no wildcard), with the branch restriction enforced by the environment's deployment-branch rule? The test 'federated credential subject pinned' then matches what Entra can verify.
+
+Why: Aligns the requirement with what the trust can actually enforce.  
+Source: Microsoft Learn: Configure an app to trust an external identity provider.
+
+### BP-11 | Requirements catalogue › DEC-IAM-20
+**Highlight:** “app role granted to basic-agent (proposed: Tools.Invoke)”  
+**Type:** Alternative | **Priority:** P1 | **Linked:** AQ-08, AQ-09, AQ-11
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P1] Q-03 asks app role versus validating the agent identity ID only. Have we considered the trade-offs? App role (Tools.Invoke): the grant is visible and auditable in Entra, can be removed centrally (no new tokens), and appears in the token, but someone must hold an app-role assignment permission, and for multi-instance blueprints we should confirm whether grants are direct or inherited. OID-only: no new Entra privilege, but authorisation lives only in APIM config and Entra cannot show who may call the tool API. We lean towards the app role, with a PIM-activated administrator as the grant executor for December (see EA-08). Does that fit your view?
+
+Why: Gives a recommendation with the privilege trade-off made explicit.  
+Source: Microsoft Learn: Authorization in Microsoft Entra Agent ID.
+
+### BP-12 | Requirements catalogue › DEC-IAM-25
+**Highlight:** “Human administrative access ... is through PIM”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-16
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] PIM covers Entra directory roles and Azure resource roles, which are configured differently. Could the requirement list which are Entra roles versus Azure RBAC roles, and confirm whether the Agent ID roles (Agent ID Administrator / Agent ID Developer) are in scope for agent-identity administration? Also, is PIM for Groups (eligible membership in a group that holds the Azure roles) acceptable to reduce per-role assignments? It simplifies reviews but adds an indirection.
+
+Why: Makes the PIM scope complete and testable.  
+Source: Microsoft Learn: Authorization in Microsoft Entra Agent ID (Agent ID roles).
+
+### BP-13 | Requirements catalogue › DEC-IAM-27
+**Highlight:** “Sign-in logs show no interactive sign-ins for P-04 to P-11”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-19
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] This proof is almost always true because service principals and managed identities cannot sign in interactively. Could we add evidence that tests the real risk, for example no human owners or credentials on the app registrations, no user accounts used as service accounts, and (if licensed) Conditional Access for workload identities on these principals? We can supply the Entra exports and queries.
+
+Why: A stronger proof of 'humans never authenticate as workload identities'.
+
+### BP-14 | Requirements catalogue › DEC-IAM-29
+**Highlight:** “90-day interactive and 7-year archive retention”  
+**Type:** Dependency | **Priority:** P2 | **Linked:** AQ-23
+
+Comment to paste:
+
+> [EIAM] [Dependency] [P2] The requirement says 90 days online and 7 years archive, while EA-23 reports a 550-day Sentinel standard. Which is authoritative for Entra logs? Entra diagnostic settings are tenant-level and shared, so enabling extra categories (service principal, managed identity, agent sign-ins, AuditLogs) needs a change agreed between EIAM and SIEM Engineering. Could SIEM Engineering confirm which categories already stream so we do not duplicate or overwrite settings?
+
+Why: Prevents an unmet retention assumption and conflicting diagnostic changes.
+
+### BP-15 | Requirements catalogue › DEC-IAM-31
+**Highlight:** “with time-to-deny measured and recorded”  
+**Type:** Question | **Priority:** P1 | **Linked:** AQ-17, AQ-18
+
+Comment to paste:
+
+> [EIAM] [Question] [P1] Could we define 'time-to-deny' and its target? Does the clock start when the operator requests PIM activation (including any approval), when the role becomes active, or when the flag/deny list changes? The LLD starts it at the flag change, which excludes PIM delay. We suggest recording three timings: activation, change-to-enforcement on each gateway path, and end-to-end. Also, who are the eligible operators (a named group?), and is approval waived for this role as the LLD proposes?
+
+Why: The acceptance target is currently ambiguous.
+
+### BP-16 | Requirements catalogue › DEC-IAM-32
+**Highlight:** “disable the agent identity and quarantine the Agent 365 record”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-25
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] Please confirm which supported operation is intended in the Entra Agent ID model (disable the agent identity service principal, restrict the blueprint, or Agent 365 quarantine) and which role performs it. We would like to validate the exact procedure in Dev before the exercise rather than assume a generic service-principal disable.
+
+Why: Avoids relying on an unverified operation during the showcase test.
+
+### BP-17 | Assumptions › A-03
+**Highlight:** “There are no guests, external users or customers.”  
+**Type:** Clarification | **Priority:** P3 | **Linked:** AQ-05
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P3] Is this an enforced control or an assumption? A guest added to an assigned group would still be admitted by app assignment. Could we add a negative test with a guest account and decide where members-only is enforced (for example a userType/identity-relationship check at APIM)?
+
+Why: Closes a gap between the assumption and the enforcement point.
+
+### BP-18 | Assumptions › A-04
+**Highlight:** “Their membership is managed by the existing enterprise process, and SailPoint is not changed for V1.”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-05
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] Who owns the internal-user, faq-all-staff and faq-platform-team groups, do they already exist, and are they assigned (not dynamic) cloud security groups? Since SailPoint governance is out of scope (KG-05/06), have we considered a lightweight control: named owners plus an Entra access review on the two FAQ groups (licence to be confirmed)? It would give periodic attestation without SailPoint. We can prototype it in Dev.
+
+Why: Gives a compensating control for the entitlement-governance gap.
+
+### BP-19 | Assumptions › A-05
+**Highlight:** “An Agent 365 licence is available for the sponsor”  
+**Type:** Dependency | **Priority:** P2 | **Linked:** AQ-04
+
+Comment to paste:
+
+> [EIAM] [Dependency] [P2] Could we get a single licensing summary the design relies on: Entra ID P1/P2 for group-based assignment, PIM, Agent 365 for the sponsor, and anything needed for Conditional Access or ID Protection for agents (Microsoft documents licensing requirements for those)? We want to confirm before building so a late licence gap does not block configuration.
+
+Why: Licence gaps surface late and block build.  
+Source: Microsoft Learn: Conditional Access for agents; ID Protection for agents.
+
+### BP-20 | Assumptions › A-09
+**Highlight:** “The seed job and the Terraform workspace authenticate through OIDC federation. Not confirmed”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-01, AQ-12, AQ-14
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] Who is expected to create the pipeline app registrations and federated credentials: EIAM, or AI Platform through Terraform? If EIAM, we need the exact GitHub and Terraform subjects, repositories, environments and workspace names. If AI Platform, we would like to review the resulting objects against the identity inventory.
+
+Why: Resolves who builds the trust and who validates it.
+
+### BP-21 | Assumptions › A-11
+**Highlight:** “Not configured for December because it is preview and licence-dependent.”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-03, AQ-04
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] Could we confirm (1) which user-side Conditional Access policies apply to the test client and test users (MFA, device state) and whether automated test accounts are in scope or excluded, and (2) whether Conditional Access for agents can be trialled in report-only or Dev if licensed, without making it a requirement? Microsoft documents that in OBO flows Conditional Access is evaluated against the user.
+
+Why: Makes test-account handling explicit and keeps agent CA as an optional trial.  
+Source: Microsoft Learn: Conditional Access for agents.
+
+### BP-22 | Impacted Business Applications › Microsoft Entra ID
+**Highlight:** “Existing, configuration change”  
+**Type:** Question | **Priority:** P1 | **Linked:** AQ-01, AQ-04
+
+Comment to paste:
+
+> [EIAM] [Question] [P1] Could we get an explicit list of Entra objects and operations (create/modify): app registrations, enterprise-app settings, group assignments, app role and assignment, federated credentials, PIM eligibilities and policies, and who performs each? We also need the application records (APM IDs from the CMDB) for the new registrations, owner/sponsor details, and whether objects are created through Terraform (and which identity) or by EIAM. This lets us raise the right change records.
+
+Why: Turns 'configuration change' into an actionable EIAM change list.
+
+### BP-23 | Application and User Experience › Related process updates
+**Highlight:** “Agent grants: approved as pull requests to the manifest”  
+**Type:** Alternative | **Priority:** P2 | **Linked:** AQ-11, AQ-19
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P2] Agent grants are approved by pull request with no access-request process (KG-05). Have we considered making EIAM a required reviewer (CODEOWNERS) for manifest fields that change authorisation: callers, user_groups, tool grants and tier? It gives identity owners a lightweight gate without SailPoint and fits the existing PR control (DEC-IAM-26).
+
+Why: Adds identity governance to an existing control with little effort.
+
+### BP-24 | Data and AI › Data Exposure Strategy
+**Highlight:** “which makes the MCP's group-to-container mapping the real data-access control”  
+**Type:** Question | **Priority:** P3 | **Linked:** AQ-05, AQ-22
+
+Comment to paste:
+
+> [EIAM] [Question] [P3] Who owns the group-to-container mapping, how is it changed (PR with which reviewers), and will EIAM review changes? If app roles are used, the mapping could be role to container, avoiding group object IDs in configuration.
+
+Why: The mapping is the effective data-access control and needs an owner.
+
+### BP-25 | Data and AI › Registration and lifecycle
+**Highlight:** “Sponsor departure, richer lifecycle states and state deletion are deferred”  
+**Type:** Clarification | **Priority:** P3 | **Linked:** AQ-26
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P3] For Dev, could we include a basic owner/sponsor validity check at readiness and when a sponsor changes role, so the Agent 365 record and the Entra agent identity are not orphaned? Which object is the system of record for ownership: the Agent 365 record or the Entra object?
+
+Why: Low-effort lifecycle hygiene before Prod.
+
+### BP-26 | Security › Identity inventory
+**Highlight:** “A signed copy is a condition of the V1 readiness review”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-01, AQ-04
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] Could we add to the inventory: the agent identity blueprint (and blueprint principal), the principal that assigns Tools.Invoke (EA-08), any Graph automation identity, the kill-switch operator group, the PIM approver group, and test user accounts? Please also confirm who signs the inventory at readiness and the source of truth (CMDB or Entra export), plus owner, purpose, environment and auth-method fields (DEC-IAM-04).
+
+Why: The inventory currently omits principals that carry real authority.
+
+### BP-27 | Security › Business user and access roles
+**Highlight:** “internal-user group | Entra security group (name to be confirmed)”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-02, AQ-05
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] Could we confirm group names and owners and add columns for owner, approver, membership source and review cadence? If app roles are adopted (Q-04), the table should list the roles and which groups map to them.
+
+Why: Makes the entitlement model reviewable.
+
+### BP-28 | Security › Identity inventory (KG-10)
+**Highlight:** “APIM is the most powerful principal on the path”  
+**Type:** Dependency | **Priority:** P3 | **Linked:** AQ-11
+
+Comment to paste:
+
+> [EIAM] [Dependency] [P3] KG-10 notes APIM's managed identity can sign a context for any user. Could we add monitoring for abnormal signing (volume, caller) in addition to D-04 (non-sign operations), and agree who reviews P-04 and P-11 permissions? We can provide Entra-side audit queries for role and permission changes on these principals.
+
+Why: Strengthens detection on the most privileged non-human principal.
+
+### BP-29 | Detailed Architecture › Identified Risks
+**Highlight:** “Risk ID | Risk Description | Include Component Specifics”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-26
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] The Identified Risks table is still the empty template, while other sections point to it for detail. Is the plan to populate it from the EA register? EIAM can contribute identity risks: agent-token lifetime versus containment (KG-07), stale group claims, the Tier-0 grant permission (EA-08), credential addition after go-live (EA-19), and tenant-level log/diagnostic changes.
+
+Why: The risk register is the place to record accepted identity risks.
+
+
+## Part B. Detailed Design (LLD)
+
+### LLD-01 | Document Control › Review and approval
+**Highlight:** “Reviewer | Enterprise IAM lead (TBC)”  
+**Type:** Clarification | **Priority:** P1 | **Linked:** AQ-01, AQ-26
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P1] The Enterprise IAM reviewer is TBC. Could you confirm the reviewer role and scope (Entra registrations, group claims, PIM, agent-identity governance) so we know which sections we are accountable for? Also, the header shows 16 November while the version history shows 11 November for v0.1; please confirm the authoritative version so our comments map to the right text.
+
+Why: Fixes reviewer scope and version baseline.
+
+### LLD-02 | 3. Identity and Configuration Register › P-02
+**Highlight:** “Auth code + PKCE; client type TBC”  
+**Type:** Question | **Priority:** P1 | **Linked:** AQ-03
+
+Comment to paste:
+
+> [EIAM] [Question] [P1] Client type for the test application is TBC. For a Dev test client we would suggest a public client (SPA or native) using authorization code + PKCE: no credential to store or rotate, which fits 'no secrets' without an exception. If a confidential client is required, an option is a federated credential that trusts a managed identity so there is still no secret or certificate (we would validate this works for the chosen flow). What is the intended hosting (browser, server-side, CLI) and the redirect URIs? Automated tests also affect this; see the MFA comment in §6.1.
+
+Why: Picks the simplest pattern that satisfies the no-secret requirement.
+
+### LLD-03 | 3. Identity and Configuration Register › P-08, P-09
+**Highlight:** “Managed identity (type TBC); Workload identity (form TBC)”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-04
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] Have we considered user-assigned managed identities for the MCP and the seed job? Benefits: the identity and its role assignments can be created before the compute resource and survive redeploys, so RBAC and the inventory stay stable. System-assigned is simpler but its principal changes if the resource is recreated. Could AI Platform confirm which they plan, so EIAM can record the object IDs and owner in the inventory?
+
+Why: Stable principals reduce RBAC drift.
+
+### LLD-04 | 3. Identity and Configuration Register
+**Highlight:** “Principal | Object type | Authenticates by | Holds (least privilege) | Status | LLD”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-01, AQ-04
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] Could the register add columns for: created by (Terraform / portal / Foundry), accountable owner, change reference, creation date, last review date, and credential/federated-credential status? That lets EIAM use the register as the inventory evidence for DEC-IAM-04 without a second spreadsheet.
+
+Why: Reuses one register as audit evidence.
+
+### LLD-05 | 3. Identity and Configuration Register › For the first access review
+**Highlight:** “All three should be reviewed by Security Architecture rather than by the team that operates them”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-11, AQ-19
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] Is EIAM expected to supply the entitlement evidence (role assignments, Graph permissions, app role assignments) and attend this review? Could we agree the cadence and what the review produces (sign-off, exceptions, actions)?
+
+Why: Defines EIAM's part in the review of the highest-privilege principals.
+
+### LLD-06 | 5.3 Identity and secrets standard / 5.4 Approved authentication patterns
+**Highlight:** “Client secret or certificate on an app registration | Not permitted in V1”  
+**Type:** Correction | **Priority:** P1 | **Linked:** AQ-07, AQ-19
+
+Comment to paste:
+
+> [EIAM] [Correction] [P1] §5.4 says a secret or certificate on an app registration is not permitted without an exception, while §6.2 allows a certificate for a confidential test client, and §5.3 refers to an app management policy that blocks password credentials. Could we reconcile: (1) are certificates allowed or an exception, (2) does the app-management policy apply to selected apps only (Microsoft supports scoping to selected applications) and what happens to existing credentials, and (3) is the feature/licence available in our tenant?
+
+Why: Resolves an internal conflict that affects the client design.  
+Source: Microsoft Learn: Configure restrictions on how applications can be configured.
+
+### LLD-07 | 6.3 Gateway API registration › Owners
+**Highlight:** “No human owners after creation; managed by Terraform (EA-19)”  
+**Type:** Question | **Priority:** P1 | **Linked:** AQ-01, AQ-15
+
+Comment to paste:
+
+> [EIAM] [Question] [P1] To our understanding, the least-privilege Graph permission for managing apps (Application.ReadWrite.OwnedBy) only works on apps the calling service principal owns, and a service principal created implicitly may not inherit ownership. So the Terraform identity may need to be the owner, or hold a broader permission. Which identity owns and manages these objects, which Graph permission does it hold, and how will EIAM administer them in a break-glass case (PIM-activated role)? Please confirm so we can document the approved pattern. (We will verify against the Graph permissions reference before build.)
+
+Why: 'No human owners' and 'managed by Terraform' need a consistent privilege model.  
+Source: Microsoft Graph permissions overview; Add an owner to an application using Microsoft Graph.
+
+### LLD-08 | 6.1 User sign-in › Authentication
+**Highlight:** “Entra SSO with MFA; existing enterprise Conditional Access applies at sign-in”  
+**Type:** Question | **Priority:** P1 | **Linked:** AQ-03, AQ-05
+
+Comment to paste:
+
+> [EIAM] [Question] [P1] How should automated tests obtain user tokens? The resource-owner password flow does not work with MFA. Options: manual interactive test runs with real test accounts; dedicated test accounts with an approved Conditional Access design (for example a scoped exclusion group or an approved strong-auth method); or APIM unit tests using synthetic tokens. Could the architect agree which we use, so EIAM can create and govern the test accounts and any CA exceptions through the normal process?
+
+Why: Test accounts and CA exceptions need an approved approach before build.
+
+### LLD-09 | 6.1 User sign-in › Group membership
+**Highlight:** “Membership of the FAQ groups must be direct, not nested”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-05
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] How will direct membership be enforced and monitored? Are faq-all-staff and faq-platform-team cloud-only security groups or synced from AD? If membership is managed through an enterprise process that uses nested groups, users will silently get no FAQ content. We can add a validation query or an access review on these groups.
+
+Why: Prevents silent entitlement failures that look like defects.  
+Source: Microsoft Learn: Manage users and groups assignment to an application.
+
+### LLD-10 | 6.2 Internal test application › API permission
+**Highlight:** “Delegated permission to the gateway API invoke scope only”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-03
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] Please confirm: does the Agent.Invoke scope require admin consent or user consent? We suggest admin consent pre-granted for the test client so users are not prompted. Also confirm required OIDC scopes (openid, profile, offline_access), whether any Graph permission is needed beyond sign-in, the redirect URIs and hosting, and how the client ID is added to the APIM allowlist per environment.
+
+Why: Pins down the client configuration sheet.
+
+### LLD-11 | 6.3 Gateway API registration › Access token version
+**Highlight:** “accessTokenAcceptedVersion = 2 (EA-10)”  
+**Type:** Correction | **Priority:** P2 | **Linked:** AQ-06
+
+Comment to paste:
+
+> [EIAM] [Correction] [P2] In the Microsoft Graph application manifest format the setting is api.requestedAccessTokenVersion (accessTokenAcceptedVersion is the older manifest name). Please confirm the attribute we should use in Terraform/Graph, and that the tool gateway API also sets v2. Microsoft's sample agent token shows a v1-style issuer, so the issuer the policy sees depends on this setting; please confirm on a real Dev token.
+
+Why: Avoids a failed or silently wrong token-version setting.  
+Source: Microsoft Learn: Understand the app manifest (Microsoft Graph format); Token claims reference for agent IDs.
+
+### LLD-12 | 6.3 Gateway API registration › Group claims
+**Highlight:** “groupMembershipClaims = ApplicationGroup”  
+**Type:** Alternative | **Priority:** P1 | **Linked:** AQ-02, AQ-05
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P1] ApplicationGroup works as designed (direct members only, P1/P2). An alternative for Q-04 is defining two app roles on the gateway API (for example FAQ.AllStaff and FAQ.PlatformTeam), assigning the groups to those roles, and having APIM/MCP use the roles claim. Benefits: no group object IDs in policy or MCP config, the roles read as meaning, no dependency on overage handling, and the role-to-container mapping is easier to review. Trade-offs: role definitions and assignments to manage in Terraform, nested groups still unsupported, and one more object to govern. Could we compare both in a short spike or record why ApplicationGroup is preferred? We are happy with either.
+
+Why: A concrete, low-effort alternative with a clear comparison.  
+Source: Microsoft Learn: Configure group claims and app roles in tokens.
+
+### LLD-13 | 6.3 Gateway API registration
+**Highlight:** “Application ID URI TBC; scope name Proposed Agent.Invoke”  
+**Type:** Question | **Priority:** P3 | **Linked:** AQ-04
+
+Comment to paste:
+
+> [EIAM] [Question] [P3] Is there an enterprise naming standard for the Application ID URI (api://<client-id> versus a verified-domain URI) and for scope names? We would like to settle this before the allowlist and APIM policy values are written.
+
+Why: Avoids rework in policy values.
+
+### LLD-14 | 6.5 Delegated context › Element table (groups, tid)
+**Highlight:** “groups: Only the FAQ group object IDs from the validated token”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-21
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] The context TTL is 5 minutes or less, but the user token APIM validates can be up to about 60-90 minutes old, and group claims are only current at issuance. Should APIM enforce a maximum user-token age, or are we comfortable that a user removed from a FAQ group keeps access until the token expires? We suggest documenting the residual window under KG-06.
+
+Why: A removed user keeps access for the remaining token lifetime.  
+Source: Microsoft Learn: Configure group claims and app roles in tokens (claims are current at issuance).
+
+### LLD-15 | 6.5 Delegated context › Element table (sub)
+**Highlight:** “sub | User object ID | oid from the validated user token”  
+**Type:** Correction | **Priority:** P3 | **Linked:** AQ-21
+
+Comment to paste:
+
+> [EIAM] [Correction] [P3] In Entra tokens, sub is a pairwise identifier unique per application, whereas oid is the immutable user object ID. Please confirm the context carries the oid value (or rename the claim) and that evidence records use the same value, so a user can be correlated across apps and logs.
+
+Why: Prevents mismatched user identifiers between context and logs.  
+Source: Microsoft identity platform: ID token / access token claims reference.
+
+### LLD-16 | 7.1 basic-agent agent identity › Expected claims
+**Highlight:** “xmsactfct | 11 (agent identity) | Proposed check”  
+**Type:** Correction | **Priority:** P1 | **Linked:** AQ-10, AQ-06
+
+Comment to paste:
+
+> [EIAM] [Correction] [P1] xms_act_fct is multi-valued and space-separated (Microsoft's sample shows '3 9 11') and order is not guaranteed, so a check 'equals 11' could reject valid tokens; use set membership. Microsoft also advises not using xms_par_app_azp for authorisation decisions. The sample agent token shows ver 1.0 with an sts.windows.net issuer and appid; the issuer and version depend on the tool API's requested token version, so the policy's 'v2 issuer' should be confirmed on a real Dev token (EA-07). Could the build book record the observed claim set?
+
+Why: A strict equality check can break valid calls.  
+Source: Microsoft Learn: Token claims reference for agent IDs.
+
+### LLD-17 | 7.1 basic-agent agent identity › Credential / Creation
+**Highlight:** “None stored. The blueprint is federated with the project managed identity”  
+**Type:** Question | **Priority:** P1 | **Linked:** AQ-09
+
+Comment to paste:
+
+> [EIAM] [Question] [P1] Who creates and owns the agent identity blueprint and the agent identity, with which Entra roles (Agent ID Developer / Administrator) and credentials? EIAM needs visibility in Entra for inventory, ownership and the ability to disable. Is this a single-instance or multi-instance blueprint? That decides whether permissions are granted directly to the agent identity or inherited from the blueprint.
+
+Why: Determines how and where authorisation is granted and audited.  
+Source: Microsoft Learn: Authorization in Microsoft Entra Agent ID.
+
+### LLD-18 | 7.4 Tool gateway › EA-08
+**Highlight:** “Name the principal that makes the assignment (the Terraform apply identity, or a PIM-activated administrator for V1)”  
+**Type:** Alternative | **Priority:** P1 | **Linked:** AQ-11
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P1] Options for assigning Tools.Invoke: (1) a PIM-activated admin performs the one-time grant in Dev: no standing Tier-0 permission on automation, fully auditable, manual; (2) a separate, narrowly used 'grant' identity behind an approval gate: repeatable but a standing Tier-0 permission; (3) the Terraform apply identity: simplest but gives the main pipeline the ability to grant any app role. We lean to (1) for December and revisit for Test/Prod. Could you confirm? We will also check whether a custom Entra role can scope the grant to the tool API only and report back.
+
+Why: Keeps the highest-privilege grant out of the pipeline for the showcase.
+
+### LLD-19 | 8.1 Agent 365 record
+**Highlight:** “Sponsor: Named human sponsor (name TBC); Technical owner (name TBC)”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-26
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] Which is the system of record for ownership: the Agent 365 record or the Entra agent identity, and how do we keep them in sync? EIAM would like to confirm both are populated and that the sponsor holds the required licence before publish (DEC-IAM-02).
+
+Why: Avoids orphaned or inconsistent ownership.
+
+### LLD-20 | 8.4 Lifecycle actions
+**Highlight:** “Disable | Entra deny list | PIM admin; Retire | ... role and app role assignments removed”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-25
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] For 'Disable', what exact Entra action is expected (disable the agent identity, remove the app role assignment, or only the APIM deny list)? For 'Retire', please list the Entra clean-up: remove the app role assignment, delete the agent identity/blueprint, remove group assignments and federated credentials, update the inventory. We will write these into the runbook.
+
+Why: Defines the identity steps of the lifecycle.
+
+### LLD-21 | 9.1 Release identity sp-hca-release
+**Highlight:** “Subject repo:org/repo:environment:protected environment (exact, no wildcard)”  
+**Type:** Alternative | **Priority:** P3 | **Linked:** AQ-12
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P3] Beyond environment protection rules, have we considered GitHub's OIDC subject customisation (for example including a workflow reference) or Entra flexible federated credentials to bind trust to a specific workflow? Flexible federated credentials are documented as preview, so may not suit December. Is environment plus branch rules (our default) enough?
+
+Why: Offers a stronger binding with its preview-status trade-off.  
+Source: Microsoft Learn: Set up a flexible federated identity credential (preview).
+
+### LLD-22 | 9.3 Terraform workspace identity P-11
+**Highlight:** “Plan identity read only. Apply identity write on rg-aif-dev-cac-01 and the APIM instance”  
+**Type:** Question | **Priority:** P1 | **Linked:** AQ-14, AQ-15
+
+Comment to paste:
+
+> [EIAM] [Question] [P1] Please confirm HCP Terraform versus Terraform Enterprise, the organization/project/workspace names, and whether plan and apply use separate identities (HCP Terraform supports separate plan and apply client IDs). Also, does Terraform use the Entra/Graph provider to create apps, groups, federated credentials or app role assignments, or only Azure resources? The answer decides which Graph permissions (and Tier-0 risk) EIAM must approve for P-11.
+
+Why: Determines the privilege level of the most powerful pipeline identity.  
+Source: HashiCorp: Dynamic credentials with the Azure provider in HCP Terraform.
+
+### LLD-23 | 9.4 Privileged human access › PIM table
+**Highlight:** “App registrations | Application Administrator or Cloud Application Administrator”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-16
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] These roles can manage credentials on many app registrations tenant-wide, which is broader than the V1 apps. Could we scope instead (for example a custom Entra role limited to the V1 app registrations, or app-level assignment) and add the Agent ID roles where needed? We will validate what scoping Entra supports and propose a least-privilege set.
+
+Why: Reduces blast radius of a PIM-activated app admin.  
+Source: Microsoft Learn: Authorization in Microsoft Entra Agent ID (Agent ID roles).
+
+### LLD-24 | 9.4 Privileged human access › PIM table
+**Highlight:** “Time-bound, MFA | Approval Yes / No / TBC”  
+**Type:** Clarification | **Priority:** P2 | **Linked:** AQ-16
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P2] Please add the PIM settings per role: maximum activation duration, MFA/authentication context, justification or ticket requirement, approver group, notification recipients, eligibility expiry and access review. 'Exact role TBC' for Foundry and Agent 365 should be resolved so we can configure and test activation end to end.
+
+Why: PIM cannot be configured or tested without these values.  
+Source: Microsoft Learn: Configure Azure resource role settings in PIM.
+
+### LLD-25 | 9.4 Privileged human access › Kill switch row
+**Highlight:** “Custom role write on the kill-switch named values only (Proposed)”  
+**Type:** Question | **Priority:** P1 | **Linked:** AQ-17
+
+Comment to paste:
+
+> [EIAM] [Question] [P1] Can Azure RBAC be scoped to individual APIM named values (child resource scope), and does the role let the operator change only those named values and nothing else in APIM? Please have AI Platform prove it with a negative test (unrelated named value or policy change denied). Also, PIM activation adds delay: is that acceptable for the time-to-deny target, or should the kill role use pre-approved, no-approval activation (as proposed) with an alert? EIAM will configure eligibility and activation once the role definition is agreed.
+
+Why: The kill role must be enforceably narrow and fast enough.  
+Source: Microsoft Learn: API Management named values; Activate Azure resource roles in PIM.
+
+### LLD-26 | 10.1 Evidence record › userref
+**Highlight:** “Pseudonymous user OID; method and re-identification rights TBC”  
+**Type:** Dependency | **Priority:** P3 | **Linked:** AQ-24
+
+Comment to paste:
+
+> [EIAM] [Dependency] [P3] Please confirm who owns the pseudonymisation method and key, and who can reverse it. EIAM should be able to correlate to a user during an investigation.
+
+Why: Investigations need a defined re-identification route.
+
+### LLD-27 | 10.3 Entra and platform logs
+**Highlight:** “Entra sign-ins | Interactive, non-interactive, service principal and managed identity sign-in categories”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-23
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] Which Entra log categories already stream to the central workspace, and which need adding for service principal, managed identity, agent identity sign-ins and AuditLogs (PIM, app role assignment, credential change)? Diagnostic settings are tenant-level, so this needs a change agreed with SIEM Engineering. Could you confirm which table agent identity sign-ins appear in so D-02 can be written?
+
+Why: Evidence depends on categories that may not be enabled.
+
+### LLD-28 | 10.4 Starter detections › D-02
+**Highlight:** “Sign-in for P-05 from an IP, resource or location outside the expected set”  
+**Type:** Question | **Priority:** P2 | **Linked:** AQ-24
+
+Comment to paste:
+
+> [EIAM] [Question] [P2] The agent runs in a platform-hosted runtime. What source IP/network is expected for token acquisition, and is it stable? If not, a more reliable baseline may be audience, app role used, and time pattern rather than IP.
+
+Why: An IP baseline may not exist for platform-hosted identities.
+
+### LLD-29 | 10.4 Starter detections › D-05
+**Highlight:** “Certificate or secret added to P-02, P-03 or P-06”  
+**Type:** Alternative | **Priority:** P2 | **Linked:** AQ-19, AQ-24
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P2] Suggest extending D-05 to P-09 to P-11 and the blueprint, and adding detections for: a new federated credential on these apps, an owner added to these apps, an app role assignment to the tool gateway API (EA-08), and PIM activation of the kill-switch or app admin roles. EIAM can supply the AuditLogs activity names for each.
+
+Why: Covers the identity changes that matter most.
+
+### LLD-30 | 11.1 Kill-switch step 1
+**Highlight:** “Probe with a valid user request and a valid agent tool call”  
+**Type:** Alternative | **Priority:** P2 | **Linked:** AQ-18
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P2] In addition to the APIM flag and deny list, there is an Entra lever: removing the Tools.Invoke app role assignment stops the agent obtaining new tool-API tokens (existing tokens stay valid until expiry). Could the exercise record this as an additional measured step? Together with the deny list at the tool gateway it gives layered containment and fits EA-21.
+
+Why: Adds an identity-side containment step with little cost.
+
+### LLD-31 | 11.2 Identity-level exercise › EA-21
+**Highlight:** “Entra access tokens default to a 60 to 90 minute lifetime”  
+**Type:** Alternative | **Priority:** P3 | **Linked:** AQ-25
+
+Comment to paste:
+
+> [EIAM] [Alternative] [P3] Entra supports configurable token lifetime policies on service principals (not managed identities; minimum 10 minutes). Have we considered a shorter access-token lifetime for the tool gateway audience, if supported for agent identities, to reduce the residual window? We would validate support in Dev before proposing it.
+
+Why: Reduces the window in which a disabled identity's tokens still work.  
+Source: Microsoft Learn: Configurable token lifetimes.
+
+### LLD-32 | Appendix D. Negative Test Catalogue › T-19
+**Highlight:** “Add a secret to the gateway API registration | Blocked by policy | D-05 fires”  
+**Type:** Clarification | **Priority:** P3 | **Linked:** AQ-19
+
+Comment to paste:
+
+> [EIAM] [Clarification] [P3] If policy blocks the secret, the credential is never created, so D-05 may not trigger on a success event; the failure may appear as a failed audit event. Please clarify the expected evidence: the policy block event, and whether a failed attempt should alert.
+
+Why: Makes the expected test evidence precise.
+
+### LLD-33 | 14. Validation Backlog › V-05
+**Highlight:** “Populate TBC values in Appendix A and B”  
+**Type:** Dependency | **Priority:** P2 | **Linked:** AQ-04, AQ-26
+
+Comment to paste:
+
+> [EIAM] [Dependency] [P2] Could we get an editable register listing each TBC with owner and needed-by date? EIAM can fill the Entra values (client IDs, URIs, scopes, group IDs, role IDs) once objects exist; let's agree who updates the table so there is one source.
+
+Why: One register avoids drifting configuration values.
+
+
+## Items still to be validated
+
+- BP-09 / LLD-14 (OBO under the Foundry hosted runtime): needs a Dev spike.
+- LLD-02 (managed identity as a federated credential for a confidential client): confirm it works for the chosen flow.
+- LLD-26 and LLD-24 (scoping Azure RBAC to individual APIM named values; scoping Entra roles to the V1 apps): confirm what scoping is supported.
+- LLD-31 (shorter token lifetime for agent identities): confirm policy support for agent identity tokens.
+- LLD-07 (Terraform/Graph ownership model): confirm against the Graph permissions reference and the provider in use.
+- Licensing statements (PIM, access reviews, Conditional Access for agents): confirm against the tenant.
+
+## References
+
+- Configure group claims and app roles in tokens: https://learn.microsoft.com/en-us/security/zero-trust/develop/configure-tokens-group-claims-app-roles
+- Manage users and groups assignment to an application: https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/assign-user-or-group-access-portal
+- Access token claims reference: https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference
+- Understand the app manifest (Microsoft Graph format): https://learn.microsoft.com/en-us/entra/identity-platform/reference-microsoft-graph-app-manifest
+- Token claims reference for agent IDs: https://learn.microsoft.com/en-us/entra/agent-id/agent-token-claims
+- Authorization in Microsoft Entra Agent ID: https://learn.microsoft.com/en-us/entra/agent-id/authorization-agent-id
+- Agent OAuth flows: On-behalf-of: https://learn.microsoft.com/en-us/entra/agent-id/agent-on-behalf-of-oauth-flow
+- Tokens in the Microsoft agent identity platform: https://learn.microsoft.com/en-us/entra/agent-id/agent-tokens
+- Conditional Access for agents: https://learn.microsoft.com/en-us/entra/identity/conditional-access/agent-id
+- ID Protection for agents: https://learn.microsoft.com/en-us/entra/id-protection/concept-risky-agents
+- Configure restrictions on how applications can be configured: https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/configure-app-management-policies
+- Configure an app to trust an external identity provider: https://learn.microsoft.com/en-us/entra/workload-id/workload-identity-federation-create-trust
+- Set up a flexible federated identity credential (preview): https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-set-up-flexible-federated-identity-credential
+- Use dynamic credentials with the Azure provider in HCP Terraform: https://developer.hashicorp.com/terraform/cloud-docs/dynamic-provider-credentials/azure-configuration
+- Overview of Microsoft Graph permissions (Application.ReadWrite.OwnedBy): https://learn.microsoft.com/en-us/graph/permissions-overview
+- Add an owner to an application using Microsoft Graph: https://learn.microsoft.com/en-us/troubleshoot/entra/entra-id/users-groups-entra-apis/add-owner-for-application-microsoft-graph
+- Configurable token lifetimes: https://learn.microsoft.com/en-us/entra/identity-platform/configurable-token-lifetimes
+- Configure Azure resource role settings in PIM: https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/pim-resource-roles-configure-role-settings
+- Activate Azure resource roles in PIM: https://learn.microsoft.com/en-us/entra/id-governance/privileged-identity-management/pim-resource-roles-activate-your-roles
+- How to use named values in Azure API Management policies: https://learn.microsoft.com/en-us/azure/api-management/api-management-howto-properties
